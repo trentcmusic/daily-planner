@@ -1,0 +1,174 @@
+<!-- Daily Planner – v7.5 (Fixed missing grid, full script inclusive) -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Daily Planner</title>
+  <style>
+    :root { --slot-h: 36px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f7f9ff; height: 100vh; display: flex; overflow: hidden; }
+    @media (max-width: 599px) { body { flex-direction: column; } }
+    @media (min-width: 600px) { body { flex-direction: row; } }
+    .column { flex: 1 1 0; overflow: auto; padding: .75rem; }
+    /* static foil background */
+    .holographic-background { background: linear-gradient(135deg,#d5d5d8 0%,#f3e7ff 25%,#e7faff 50%,#d5d5d8 75%,#f3e7ff 100%); }
+    #todo { max-width: 240px; border-right: 2px solid #dee2e6; }
+    @media (max-width: 599px) { #todo { max-width: 100%; border-bottom: 2px solid #dee2e6; } }
+    #schedule { background: #eef3ff; display: flex; flex-direction: column; }
+    #headerRow { display: flex; align-items: center; gap: 1rem; margin-bottom: .5rem; }
+    #datePicker { padding: .3rem .5rem; border: 1px solid #ccc; border-radius: 6px; font: inherit; }
+    #exportBtn { margin-left: auto; padding: .4rem .8rem; border: none; border-radius: 6px; background: #4c6fff; color: #fff; font-weight: 600; cursor: pointer; }
+    #exportBtn:hover { background: #355eff; }
+    .card { padding: .4rem .6rem; margin: .3rem 0; border-radius: 6px; color: #fff; font-weight: 600; cursor: grab; user-select: none; }
+    .journaling{background:#ff9f43}.prayer{background:#5758BB}.gaming{background:#1B9CFC}.nap{background:#FDA7DF}.medicine{background:#e15f41}.handiwork{background:#2ecc71}.freetime{background:#3dc1d3}.dropoff{background:#34ace0}.therapy{background:#574b90}.bed{background:#2f3542}.appointment{background:#b33771}.chores{background:#9b59b6}
+    #grid { display: grid; grid-template-columns: 70px 1fr; flex: 1 1 auto; overflow: auto; }
+    .hour-label { height: calc(var(--slot-h)*4); line-height: calc(var(--slot-h)*4); text-align: right; padding-right: .4rem; font-size: .74rem; color: #666; border-bottom: 1px solid #d0d6ff; }
+    .slot { height: var(--slot-h); border-bottom: 1px dashed #c6cff7; position: relative; }
+    .slot:nth-child(4n) { border-bottom: 1px solid #aabaff; }
+    .slot.highlight { background: #d3f9d8; }
+    .pill { position: absolute; top: 2px; left: 2px; right: 2px; height: calc(var(--slot-h) - 4px); display: flex; align-items: center; justify-content: center; border-radius: 4px; font-size: .7rem; color: #fff; cursor: grab; white-space: nowrap; }
+    .handle { position: absolute; bottom: 0; left: 0; right: 0; height: 6px; background: rgba(255,255,255,.65); cursor: ns-resize; }
+    #trash { position: fixed; right: 18px; bottom: 18px; width: 60px; height: 60px; border-radius: 50%; background: #ff6b6b; display: flex; align-items: center; justify-content: center; font-size: 26px; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); z-index: 1000; transition: background .2s; }
+    #trash.hover { background: #ff3b3b; }
+    #toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 16px; border-radius: 20px; opacity: 0; pointer-events: none; transition: opacity .3s; font-size: .8rem; z-index: 1001; display: flex; gap: .75rem; align-items: center; }
+    #toast.show { opacity: 1; pointer-events: auto; }
+    #toast button { background: none; border: none; color: #1e90ff; font-weight: 600; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <aside id="todo" class="column holographic-background">
+    <h2>Actions</h2>
+    <div class="card journaling" draggable="true">Journaling</div>
+    <div class="card prayer" draggable="true">Prayer & Bible</div>
+    <div class="card gaming" draggable="true">Gaming</div>
+    <div class="card nap" draggable="true">Nap</div>
+    <div class="card medicine" draggable="true">Take Medicine</div>
+    <div class="card handiwork" draggable="true">Handiwork</div>
+    <div class="card freetime" draggable="true">Free time</div>
+    <div class="card dropoff" draggable="true">Dropoff/Pickup</div>
+    <div class="card therapy" draggable="true">Therapy</div>
+    <div class="card bed" draggable="true">Get ready for bed</div>
+    <div class="card appointment" draggable="true">Appointment</div>
+    <div class="card chores" draggable="true">Chores</div>
+  </aside>
+  <section id="schedule" class="column">
+    <div id="headerRow">
+      <input type="date" id="datePicker" />
+      <button id="exportBtn">Export (.ics)</button>
+    </div>
+    <div id="grid"></div>
+  </section>
+  <div id="trash">🗑</div>
+  <div id="toast">Deleted. <button id="undoBtn">Undo</button></div>
+  <script>
+  (function(){
+    const SLOT_H = 36;
+    const pad = n => n.toString().padStart(2,'0');
+    const hm12 = hm => { let h = parseInt(hm.slice(0,2)), m = hm.slice(2); const ap = h<12?'AM':'PM'; h = h%12||12; return `${h}:${m} ${ap}`; };
+    const addM = (hm, mins) => { const t = parseInt(hm.slice(0,2))*60 + parseInt(hm.slice(2)) + mins; return pad(Math.floor(t/60)%24) + pad(t%60); };
+    const grid = document.getElementById('grid');
+    for(let h=0; h<24; h++){
+      const lbl = document.createElement('div'); lbl.className='hour-label'; lbl.textContent=`${(h%12||12)} ${h<12?'AM':'PM'}`;
+      grid.appendChild(lbl);
+      const col = document.createElement('div'); grid.appendChild(col);
+      for(let q=0; q<4; q++){
+        const slot = document.createElement('div'); slot.className='slot'; slot.dataset.hm = pad(h)+pad(q*15);
+        col.appendChild(slot);
+      }
+    }
+    const datePicker = document.getElementById('datePicker');
+    const todayISO = new Date().toISOString().split('T')[0];
+    datePicker.value = todayISO; datePicker.min = todayISO;
+    let selectedDate = new Date();
+    datePicker.addEventListener('change', e => { selectedDate = new Date(e.target.value + 'T00:00'); });
+    const getSlot = e => { const el = document.elementFromPoint(e.clientX,e.clientY); return el && el.classList.contains('slot') ? el : null; };
+    let dragging = null, lastDel = null;
+    const toast = document.getElementById('toast');
+    function makePill(txt,color){
+      const p = document.createElement('div'); p.className='pill'; p.style.background=color; p.dataset.action=txt; p.dataset.duration=1;
+      p.innerHTML = '<span class="lbl"></span><div class="handle"></div>';
+      addDrag(p); addResize(p);
+      return p;
+    }
+    function addDrag(p){ p.addEventListener('dragstart',()=>dragging=p); p.addEventListener('dragend',()=>dragging=null); p.draggable=true; }
+    function addResize(p){
+      const hnd = p.querySelector('.handle'); let sy, sd;
+      hnd.addEventListener('mousedown', e => {
+        e.stopPropagation(); e.preventDefault();
+        sy = e.clientY; sd = parseInt(p.dataset.duration);
+        p.draggable = false;
+        const mv = e2 => {
+          const d = Math.max(1, sd + Math.round((e2.clientY - sy)/SLOT_H));
+          p.dataset.duration = d;
+          p.style.height = `calc(var(--slot-h)*${d} - 4px)`;
+          refreshLabel(p, p.parentElement);
+        };
+        const up = () => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); p.draggable = true; };
+        document.addEventListener('mousemove', mv);
+        document.addEventListener('mouseup', up);
+      });
+    }
+    function refreshLabel(p,slot){ if(!slot) return; const dur = parseInt(p.dataset.duration)||1; const sHM = slot.dataset.hm; const eHM = addM(sHM, dur*15); p.querySelector('.lbl').textContent = `${hm12(sHM)} – ${hm12(eHM)} • ${p.dataset.action}`; }
+    document.querySelectorAll('#todo .card').forEach(c => c.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('palette','1');
+      e.dataTransfer.setData('label', c.innerText);
+      e.dataTransfer.setData('color', getComputedStyle(c).backgroundColor);
+    }));
+    document.addEventListener('dragover', e => {
+      e.preventDefault();
+      document.querySelectorAll('.slot.highlight').forEach(s => s.classList.remove('highlight'));
+      const s = getSlot(e);
+      if(s) s.classList.add('highlight');
+    });
+    document.addEventListener('drop', e => {
+      const slot = getSlot(e);
+      if(!slot) return;
+      slot.classList.remove('highlight');
+      if(dragging){
+        dragging.parentElement.innerHTML = '';
+        slot.innerHTML = '';
+        slot.appendChild(dragging);
+        refreshLabel(dragging, slot);
+        dragging = null;
+        return;
+      }
+      if(e.dataTransfer.getData('palette')){
+        slot.innerHTML = '';
+        const pill = makePill(e.dataTransfer.getData('label'), e.dataTransfer.getData('color'));
+        slot.appendChild(pill);
+        refreshLabel(pill, slot);
+      }
+    });
+    const trash = document.getElementById('trash');
+    trash.addEventListener('dragover', e => { e.preventDefault(); trash.classList.add('hover'); });
+    trash.addEventListener('dragleave', () => trash.classList.remove('hover'));
+    trash.addEventListener('drop', e => { e.preventDefault(); trash.classList.remove('hover'); if(dragging){ lastDel={node:dragging,slot:dragging.parentElement}; dragging.parentElement.innerHTML=''; dragging=null; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'),5000);} });
+    document.getElementById('undoBtn').addEventListener('click', ()=>{ if(lastDel){ lastDel.slot.appendChild(lastDel.node); refreshLabel(lastDel.node,lastDel.slot); lastDel=null;} toast.classList.remove('show'); });
+    document.getElementById('exportBtn').addEventListener('click', ()=>{
+      const events=[];
+      document.querySelectorAll('.slot').forEach(slot=>{
+        const p=slot.querySelector('.pill'); if(!p) return;
+        const sHM=slot.dataset.hm;
+        const dur=parseInt(p.dataset.duration)||1;
+        const startMin=parseInt(sHM.slice(0,2))*60+parseInt(sHM.slice(2));
+        const endMin=startMin+dur*15;
+        const dtStart=new Date(selectedDate);
+        dtStart.setHours(0,0,0,0);
+        dtStart.setMinutes(startMin);
+        const dtEnd=new Date(selectedDate);
+        dtEnd.setHours(0,0,0,0);
+        dtEnd.setMinutes(endMin);
+        const fmt=d=>d.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
+        events.push(`BEGIN:VEVENT\nDTSTART:${fmt(dtStart)}\nDTEND:${fmt(dtEnd)}\nSUMMARY:${p.dataset.action}\nEND:VEVENT`);
+      });
+      if(!events.length){ alert('No events to export'); return; }
+      const ics=['BEGIN:VCALENDAR','VERSION:2.0','CALSCALE:GREGORIAN',...events,'END:VCALENDAR'].join('\n');
+      const blob=new Blob([ics],{type:'text/calendar'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='daily_schedule.ics'; a.click();
+    });
+  })();
+  </script>
+</body>
+</html>
