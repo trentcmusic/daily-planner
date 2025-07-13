@@ -1,0 +1,107 @@
+<!-- Daily Planner – v6.8 (Export button restored, schedule intact) -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Daily Planner</title>
+<style>
+:root{--slot-h:36px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f7f9ff;height:100vh;display:flex;overflow:hidden}
+@media(max-width:800px){body{flex-direction:column}}
+.column{flex:1 1 0;overflow:auto;padding:.75rem}
+#todo{max-width:240px;background:#fff;border-right:2px solid #dee2e6}
+#schedule{background:#eef3ff;display:flex;flex-direction:column;position:relative}
+h2{margin:.25rem 0 1rem;font-size:1.05rem;font-weight:600}
+#exportBtn{align-self:flex-end;margin-bottom:.5rem;padding:.4rem .8rem;border:none;border-radius:6px;background:#4c6fff;color:#fff;font-weight:600;cursor:pointer}
+#exportBtn:hover{background:#355eff}
+.card{padding:.4rem .6rem;margin:.3rem 0;border-radius:6px;color:#fff;font-weight:600;cursor:grab;user-select:none}
+.journaling{background:#ff9f43}.prayer{background:#5758BB}.gaming{background:#1B9CFC}.nap{background:#FDA7DF}.medicine{background:#e15f41}.handiwork{background:#2ecc71}.freetime{background:#3dc1d3}.dropoff{background:#34ace0}.therapy{background:#574b90}.bed{background:#2f3542}.appointment{background:#b33771}.chores{background:#9b59b6}
+#grid{display:grid;grid-template-columns:70px 1fr;flex:1;overflow:auto}
+.hour-label{height:calc(var(--slot-h)*4);line-height:calc(var(--slot-h)*4);text-align:right;padding-right:.4rem;font-size:.74rem;color:#666;border-bottom:1px solid #d0d6ff}
+.slot{height:var(--slot-h);border-bottom:1px dashed #c6cff7;position:relative}
+.slot:nth-child(4n){border-bottom:1px solid #aabaff}
+.slot.highlight{background:#d3f9d8}
+.pill{position:absolute;top:2px;left:2px;right:2px;height:calc(var(--slot-h) - 4px);display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:.7rem;color:#fff;cursor:grab;user-select:none;white-space:nowrap}
+.handle{position:absolute;bottom:0;left:0;right:0;height:6px;background:rgba(255,255,255,.7);cursor:ns-resize;font-size:0}
+#trash{position:fixed;right:18px;bottom:18px;width:60px;height:60px;border-radius:50%;background:#ff6b6b;display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff;box-shadow:0 2px 6px rgb(0 0 0/.25);z-index:1000;transition:background .2s}
+#trash.hover{background:#ff3b3b}
+#toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:8px 16px;border-radius:20px;opacity:0;pointer-events:none;transition:opacity .3s;display:flex;gap:.75rem;align-items:center;font-size:.8rem;z-index:1001}
+#toast.show{opacity:1;pointer-events:auto}
+#toast button{background:none;border:none;color:#1e90ff;font-weight:600;cursor:pointer}
+</style>
+</head>
+<body>
+<!-- Palette -->
+<aside id="todo" class="column"><h2>Actions</h2><div class="card journaling" draggable="true">Journaling</div><div class="card prayer" draggable="true">Prayer & Bible</div><div class="card gaming" draggable="true">Gaming</div><div class="card nap" draggable="true">Nap</div><div class="card medicine" draggable="true">Take Medicine</div><div class="card handiwork" draggable="true">Handiwork</div><div class="card freetime" draggable="true">Free time</div><div class="card dropoff" draggable="true">Dropoff/Pickup</div><div class="card therapy" draggable="true">Therapy</div><div class="card bed" draggable="true">Get ready for bed</div><div class="card appointment" draggable="true">Appointment</div><div class="card chores" draggable="true">Chores</div></aside>
+<section id="schedule" class="column"><button id="exportBtn">Export (.ics)</button><h2>Today</h2><div id="grid"></div></section>
+<div id="trash">🗑</div><div id="toast">Deleted. <button id="undoBtn">Undo</button></div>
+<script>
+(function(){
+  const SLOT_H=36;
+  const grid=document.getElementById('grid');
+  const pad=n=>n.toString().padStart(2,'0');
+  const hm12=hm=>{let h=parseInt(hm.slice(0,2));const m=hm.slice(2);const ap=h<12?'AM':'PM';h=h%12||12;return `${h}:${m} ${ap}`};
+  const addM=(hm,min)=>{const t=parseInt(hm.slice(0,2))*60+parseInt(hm.slice(2))+min;return pad(Math.floor(t/60)%24)+pad(t%60)};
+  // Build schedule grid
+  for(let h=0;h<24;h++){
+    grid.insertAdjacentHTML('beforeend',`<div class="hour-label">${(h%12||12)} ${h<12?'AM':'PM'}</div><div></div>`);
+    const col=grid.lastElementChild;
+    for(let q=0;q<4;q++){
+      const hm=pad(h)+pad(q*15);
+      col.insertAdjacentHTML('beforeend',`<div class="slot" data-hm="${hm}"></div>`);
+    }
+  }
+  const getSlot=e=>{const el=document.elementFromPoint(e.clientX,e.clientY);return el&&el.classList.contains('slot')?el:null};
+  let dragging=null,lastDel=null;const toast=document.getElementById('toast');
+  function makePill(label,color,dur=1){
+    const p=document.createElement('div');p.className='pill';p.style.background=color;p.dataset.duration=dur;p.dataset.action=label;
+    const span=document.createElement('span');span.className='lbl';p.appendChild(span);
+    addResize(p);addDrag(p);
+    return p;
+  }
+  function addResize(p){if(p.querySelector('.handle'))return;const h=document.createElement('div');h.className='handle';p.appendChild(h);
+    let sy,sd;
+    h.addEventListener('mousedown',e=>{
+      e.stopPropagation();e.preventDefault();sy=e.clientY;sd=parseInt(p.dataset.duration);p.draggable=false;
+      const mv=e2=>{const d=Math.max(1,sd+Math.round((e2.clientY-sy)/SLOT_H));p.dataset.duration=d;p.style.height=`calc(var(--slot-h)*${d} - 4px)`;refreshLabel(p,p.parentElement);};
+      const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);p.draggable=true;};
+      document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+    });}
+  function addDrag(p){p.addEventListener('dragstart',()=>dragging=p);p.addEventListener('dragend',()=>dragging=null);p.setAttribute('draggable','true');}
+  function refreshLabel(pill,slot){if(!slot)return;const dur=parseInt(pill.dataset.duration)||1;const sHM=slot.dataset.hm;const eHM=addM(sHM,dur*15);pill.querySelector('.lbl').textContent=`${hm12(sHM)} – ${hm12(eHM)} • ${pill.dataset.action}`;}
+  // Palette drag
+  document.querySelectorAll('#todo .card').forEach(c=>c.addEventListener('dragstart',e=>{e.dataTransfer.setData('palette','1');e.dataTransfer.setData('label',c.innerText);e.dataTransfer.setData('color',getComputedStyle(c).backgroundColor);}));
+  // Highlight slot under pointer
+  document.addEventListener('dragover',e=>{e.preventDefault();document.querySelectorAll('.slot.highlight').forEach(s=>s.classList.remove('highlight'));const s=getSlot(e);if(s)s.classList.add('highlight')});
+  // Drop logic
+  document.addEventListener('drop',e=>{
+    const slot=getSlot(e);if(!slot)return;slot.classList.remove('highlight');
+    if(dragging){dragging.parentElement.innerHTML='';slot.innerHTML='';slot.appendChild(dragging);refreshLabel(dragging,slot);dragging=null;return;}
+    if(e.dataTransfer.getData('palette')){
+      slot.innerHTML='';
+      const pill=makePill(e.dataTransfer.getData('label'),e.dataTransfer.getData('color'));
+      slot.appendChild(pill);refreshLabel(pill,slot);
+    }
+  });
+  // Trash delete
+  const trash=document.getElementById('trash');trash.addEventListener('dragover',e=>{e.preventDefault();trash.classList.add('hover')});trash.addEventListener('dragleave',()=>trash.classList.remove('hover'));trash.addEventListener('drop',e=>{e.preventDefault();trash.classList.remove('hover');if(dragging){lastDel={node:dragging,slot:dragging.parentElement};dragging.parentElement.innerHTML='';dragging=null;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),5000);}});
+  document.getElementById('undoBtn').addEventListener('click',()=>{if(lastDel){lastDel.slot.appendChild(lastDel.node);refreshLabel(lastDel.node,lastDel.slot);lastDel=null;}toast.classList.remove('show');});
+  // EXPORT button
+  document.getElementById('exportBtn').addEventListener('click',()=>{
+    const events=[];
+    document.querySelectorAll('.slot').forEach(slot=>{
+      const pill=slot.querySelector('.pill');if(!pill)return;const startHM=slot.dataset.hm;const dur=parseInt(pill.dataset.duration)||1;const startM=parseInt(startHM.slice(0,2))*60+parseInt(startHM.slice(2));const endM=startM+dur*15;
+      const base=new Date();base.setHours(0,0,0,0);
+      const fmt=d=>d.toISOString().replace(/[-:]/g,'').replace('.000','');
+      events.push(`BEGIN:VEVENT\nDTSTART:${fmt(new Date(base.getTime()+startM*60000))}\nDTEND:${fmt(new Date(base.getTime()+endM*60000))}\nSUMMARY:${pill.dataset.action}\nEND:VEVENT`);
+    });
+    if(!events.length){alert('No events to export');return;}
+    const blob=new Blob([`BEGIN:VCALENDAR\nVERSION:2.0\nCALSCALE:GREGORIAN\n${events.join('\n')}\nEND:VCALENDAR`],{type:'text/calendar'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='daily_schedule.ics';a.click();
+  });
+})();
+</script>
+</body>
+</html>
