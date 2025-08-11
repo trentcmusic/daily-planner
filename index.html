@@ -14,7 +14,7 @@
     .column { flex: 1 1 0; overflow: auto; padding: .75rem; }
     .holographic-background { background: linear-gradient(135deg,#d5d5d8 0%,#f3e7ff 25%,#e7faff 50%,#d5d5d8 75%,#f3e7ff 100%); }
 
-    /* Actions column – smaller, tighter chips */
+    /* Actions column – smaller chips */
     #todo { max-width: 260px; border-right: 2px solid #dee2e6; }
     @media (max-width: 599px) { #todo { max-width: 100%; border-bottom: 2px solid #dee2e6; } }
     h2 { font-size: 0.95rem; margin-bottom: .4rem; color: #333; }
@@ -45,19 +45,18 @@
     .slot:nth-child(4n) { border-bottom: 1px solid #aabaff; }
     .slot.target { background: #e7fbef; }
 
-    /* Pills inside schedule: narrower for scroll blank space */
+    /* Pills: full width in the slot */
     .pill {
-      position: absolute; top: 2px; left: 28px; right: 28px;
+      position: absolute; top: 2px; left: 2px; right: 2px;
       height: calc(var(--slot-h) - 4px);
       display: flex; align-items: center; justify-content: center;
       border-radius: 10px; font-size: .78rem; color: #fff;
       user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
       touch-action: pan-y; cursor: default;
-      transition: left .12s ease, right .12s ease, transform .1s ease, opacity .1s ease;
     }
-    .pill.scheduled { left: 40px; right: 40px; } /* extra side room once placed */
+    .pill.scheduled { left: 2px; right: 2px; }
 
-    /* Tiny drag handle (optional for mouse users) */
+    /* Move grip (left) – visible, but label also draggable */
     .move-handle {
       position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
       width: 16px; height: 16px; border-radius: 4px;
@@ -73,9 +72,10 @@
       mix-blend-mode: overlay;
     }
 
-    /* Resize bar (bottom edge) */
+    /* Resize bar (bottom) */
     .handle { position: absolute; bottom: 0; left: 0; right: 0; height: 12px; background: rgba(255,255,255,.65); border-bottom-left-radius: 10px; border-bottom-right-radius: 10px; cursor: ns-resize; }
-    .pill .lbl { padding: 0 .6rem 0 28px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+    .pill .lbl { padding: 0 .6rem 0 28px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: grab; }
 
     .current-time-line { position: absolute; left: 70px; right: 0; height: 2px; background: #ff3b3b; z-index: 1; pointer-events: none; }
 
@@ -86,7 +86,7 @@
     #toast.show { opacity: 1; pointer-events: auto; }
     #toast button { background: none; border: none; color: #a2c4ff; font-weight: 700; cursor: pointer; }
 
-    .drag-ghost { position: fixed; z-index: 2000; pointer-events: none; opacity: .9; transform: translate(-50%, -50%); border-radius: 8px; padding: .3rem .5rem; color: #fff; font-weight: 800; font-size: .8rem; white-space: nowrap; }
+    .drag-ghost { position: fixed; z-index: 2000; pointer-events: none; opacity: .95; transform: translate(-50%, -50%); border-radius: 8px; padding: .3rem .5rem; color: #fff; font-weight: 800; font-size: .8rem; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -152,7 +152,7 @@
     const undoBtn = document.getElementById('undoBtn');
     const trash = document.getElementById('trash');
 
-    // Block iOS text-selection/callout in schedule
+    // Hard-block iOS text callouts during interactions
     ['contextmenu','selectstart','gesturestart'].forEach(evt=>{
       gridWrap.addEventListener(evt, e=>{
         if(e.target.closest('.pill') || e.target.closest('.slot')) e.preventDefault();
@@ -190,11 +190,11 @@
       p.className='pill';
       p.style.background=color;
       p.dataset.action=txt;
-      p.dataset.duration=1; // default for new item only
+      p.dataset.duration=1; // default for new item
       p.innerHTML = '<span class="lbl"></span><div class="move-handle" title="Drag"></div><div class="handle" title="Resize"></div>';
-      addDesktopDragFromHandle(p);
-      addResize(p);
-      addPointerDragAnywhere(p); // long-press anywhere on pill (except bottom resize bar)
+      addDesktopDrag(p);        // from grip or label
+      addResize(p);             // from bottom bar
+      addPointerDrag(p);        // long-press from grip or label
       return p;
     }
     function refreshLabel(p,slot){
@@ -205,14 +205,17 @@
       p.querySelector('.lbl').textContent = `${hm12(sHM)} – ${hm12(eHM)} • ${p.dataset.action}`;
     }
 
-    // Desktop HTML5 drag (from tiny handle)
+    // Desktop drag: only from grip OR label (not from resize bar/body)
     let draggingNative = null;
-    function addDesktopDragFromHandle(p){
-      const mover = p.querySelector('.move-handle');
+    function addDesktopDrag(p){
+      const grip = p.querySelector('.move-handle');
+      const label = p.querySelector('.lbl');
       p.draggable = false;
-      mover.draggable = true;
-      mover.addEventListener('dragstart',()=> draggingNative=p);
-      mover.addEventListener('dragend',()=> draggingNative=null);
+      [grip, label].forEach(el=>{
+        el.draggable = true;
+        el.addEventListener('dragstart',()=> draggingNative=p);
+        el.addEventListener('dragend',()=> draggingNative=null);
+      });
     }
     document.addEventListener('dragover', e => {
       e.preventDefault(); document.querySelectorAll('.slot.target').forEach(s=>s.classList.remove('target'));
@@ -224,32 +227,36 @@
       if(draggingNative){ draggingNative.classList.add('scheduled'); s.appendChild(draggingNative); refreshLabel(draggingNative, s); draggingNative=null; }
     });
 
-    // Pointer drag (mobile): long-press ANYWHERE on pill body (except resize bar)
+    // Pointer drag (mobile): long-press on grip OR label
     let isResizing = false;
     let draggingCustom = null, draggingFromPalette = null, dragGhost = null, dragActive = false;
     const LONG_PRESS_MS = 250, MOVE_THRESH = 6;
 
-    function addPointerDragAnywhere(p){
-      let timer=null, sx=0, sy=0;
-      p.addEventListener('pointerdown', e => {
-        if(isResizing) return;
-        if(e.target.closest('.handle')) return; // resizing zone
-        // don't block scrolling unless we actually start a drag
-        sx = e.clientX; sy = e.clientY;
-        timer = setTimeout(()=>{ draggingCustom = p; beginPointerDrag(e, p.dataset.action, getComputedStyle(p).backgroundColor); }, LONG_PRESS_MS);
-      }, {passive:true});
-      p.addEventListener('pointermove', e => {
-        if(!timer) return;
-        if(Math.hypot(e.clientX-sx, e.clientY-sy) > MOVE_THRESH){
-          clearTimeout(timer); timer=null;
-          draggingCustom = p; beginPointerDrag(e, p.dataset.action, getComputedStyle(p).backgroundColor);
-        }
-      }, {passive:true});
-      p.addEventListener('pointerup', ()=>{ if(timer){ clearTimeout(timer); timer=null; } }, {passive:true});
-      p.addEventListener('pointercancel', ()=>{ if(timer){ clearTimeout(timer); timer=null; } }, {passive:true});
+    function addPointerDrag(p){
+      const grip = p.querySelector('.move-handle');
+      const label = p.querySelector('.lbl');
+      [grip, label].forEach(starter=>{
+        let timer=null, sx=0, sy=0;
+        starter.addEventListener('pointerdown', e => {
+          if(isResizing) return;
+          e.preventDefault();
+          sx = e.clientX; sy = e.clientY;
+          timer = setTimeout(()=>{ draggingCustom = p; beginPointerDrag(e, p.dataset.action, getComputedStyle(p).backgroundColor); }, LONG_PRESS_MS);
+        }, {passive:false});
+        starter.addEventListener('pointermove', e => {
+          if(!timer) return;
+          if(Math.hypot(e.clientX-sx, e.clientY-sy) > MOVE_THRESH){
+            clearTimeout(timer); timer=null;
+            draggingCustom = p; beginPointerDrag(e, p.dataset.action, getComputedStyle(p).backgroundColor);
+          }
+        }, {passive:false});
+        const cancel = ()=>{ if(timer){ clearTimeout(timer); timer=null; } };
+        starter.addEventListener('pointerup', cancel, {passive:true});
+        starter.addEventListener('pointercancel', cancel, {passive:true});
+      });
     }
 
-    // Palette
+    // Palette (drag from anywhere on the card)
     document.querySelectorAll('#todo .card').forEach(card => {
       // desktop
       card.draggable = true;
@@ -288,6 +295,11 @@
       if(e.clientY < rect.top + margin) gridWrap.scrollTop -= 10;
       else if(e.clientY > rect.bottom - margin) gridWrap.scrollTop += 10;
     }
+    function clearGhostAndSelection(){
+      if(dragGhost){ dragGhost.remove(); dragGhost=null; }
+      trash.classList.remove('hover');
+      try { const sel = window.getSelection && window.getSelection(); sel && sel.removeAllRanges && sel.removeAllRanges(); } catch {}
+    }
     function onPointerUp(e){
       document.removeEventListener('pointermove', onPointerMove, {passive:false});
       document.removeEventListener('pointerup', onPointerUp, {passive:false});
@@ -303,11 +315,9 @@
       } else if(s){
         if(draggingFromPalette){
           const pill = makePill(draggingFromPalette.label, draggingFromPalette.color);
-          pill.classList.add('scheduled');                      // width styling
-          s.appendChild(pill);                                  // NEW pill has duration 1 (by design)
-          refreshLabel(pill, s);
+          pill.classList.add('scheduled');
+          s.appendChild(pill); refreshLabel(pill, s);
         } else if(draggingCustom){
-          // MOVE keeps current duration exactly
           draggingCustom.classList.add('scheduled');
           s.appendChild(draggingCustom);
           refreshLabel(draggingCustom, s);
@@ -316,9 +326,8 @@
       dragActive = false;
       draggingFromPalette = null;
       draggingCustom = null;
-      if(dragGhost){ dragGhost.remove(); dragGhost=null; }
-      trash.classList.remove('hover');
       document.querySelectorAll('.slot.target').forEach(s=>s.classList.remove('target'));
+      clearGhostAndSelection();
     }
 
     function slotFromPoint(x,y){
@@ -369,6 +378,9 @@
       const last = undoStack.pop();
       if(last){ last.slot.appendChild(last.node); refreshLabel(last.node, last.slot); }
       toast.classList.remove('show');
+      // also clear any ghost/selection for safety
+      try { const sel = window.getSelection && window.getSelection(); sel && sel.removeAllRanges && sel.removeAllRanges(); } catch {}
+      const dg = document.querySelector('.drag-ghost'); if(dg) dg.remove();
     });
 
     // Export
@@ -401,13 +413,16 @@
       a.click();
     });
 
-    // Clear on reload / on date change (no persistence)
+    // Clear on reload / date change (no persistence)
     function clearAndForget(){
       const key = 'plannerData:'+ datePicker.value;
       localStorage.removeItem(key);
       document.querySelectorAll('.pill').forEach(p=>p.remove());
+      // also nuke any stray ghost/selection
+      const dg = document.querySelector('.drag-ghost'); if(dg) dg.remove();
+      try { const sel = window.getSelection && window.getSelection(); sel && sel.removeAllRanges && sel.removeAllRanges(); } catch {}
     }
-    clearAndForget(); // wipe right now
+    clearAndForget();
 
     // Current-time line
     function updateNowLine(){
@@ -418,6 +433,34 @@
     }
     setInterval(updateNowLine, 60000);
     updateNowLine();
+
+    // Palette to schedule flow (same as before)
+    document.querySelectorAll('#todo .card').forEach(card => {
+      card.draggable = true;
+      card.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('label', card.innerText);
+        e.dataTransfer.setData('color', getComputedStyle(card).backgroundColor);
+      });
+      card.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        draggingFromPalette = {label: card.innerText, color: getComputedStyle(card).backgroundColor};
+        beginPointerDrag(e, card.innerText, getComputedStyle(card).backgroundColor);
+      }, {passive:false});
+    });
+
+    // When dropping a desktop-dragged palette card
+    document.addEventListener('drop', e => {
+      const s = slotFromPoint(e.clientX, e.clientY);
+      if(!s) return;
+      const label = e.dataTransfer && e.dataTransfer.getData('label');
+      const color = e.dataTransfer && e.dataTransfer.getData('color');
+      if(label && color){
+        const pill = makePill(label, color);
+        pill.classList.add('scheduled');
+        s.appendChild(pill); refreshLabel(pill, s);
+      }
+    });
+
   })();
   </script>
 </body>
