@@ -8,17 +8,27 @@
     :root { --slot-h: 36px; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #f7f9ff; height: 100vh; display: flex; overflow: hidden; }
-
     @media (max-width: 599px) { body { flex-direction: column; } }
     @media (min-width: 600px) { body { flex-direction: row; } }
 
     .column { flex: 1 1 0; overflow: auto; padding: .75rem; }
     .holographic-background { background: linear-gradient(135deg,#d5d5d8 0%,#f3e7ff 25%,#e7faff 50%,#d5d5d8 75%,#f3e7ff 100%); }
+
+    /* Actions column – smaller, tighter chips */
     #todo { max-width: 260px; border-right: 2px solid #dee2e6; }
     @media (max-width: 599px) { #todo { max-width: 100%; border-bottom: 2px solid #dee2e6; } }
-    h2 { font-size: 1rem; margin-bottom: .5rem; color: #333; }
-
-    .card { padding: .5rem .6rem; margin: .35rem 0; border-radius: 8px; color: #fff; font-weight: 700; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none; cursor: grab; }
+    h2 { font-size: 0.95rem; margin-bottom: .4rem; color: #333; }
+    .card {
+      padding: .38rem .5rem;
+      margin: .28rem 0;
+      border-radius: 10px;
+      color: #fff;
+      font-weight: 700;
+      font-size: .95rem;
+      line-height: 1.1;
+      user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+      touch-action: none; cursor: grab;
+    }
     .journaling{background:#ff9f43}.prayer{background:#5758BB}.gaming{background:#1B9CFC}.nap{background:#FDA7DF}.medicine{background:#e15f41}.handiwork{background:#2ecc71}.freetime{background:#3dc1d3}.dropoff{background:#34ace0}.therapy{background:#574b90}.bed{background:#2f3542}.appointment{background:#b33771}.chores{background:#9b59b6}
     .work{background:#ff6f61}.phone{background:#16a085}.email{background:#2980b9}.exercise{background:#e67e22}.commute{background:#7f8c8d}.meeting{background:#8e44ad}.mealprep{background:#2ecc71}.groceries{background:#27ae60}.errands{background:#d35400}.focus{background:#34495e}.break{background:#95a5a6}.reading{background:#9b59b6}.family{background:#c0392b}
 
@@ -35,7 +45,7 @@
     .slot:nth-child(4n) { border-bottom: 1px solid #aabaff; }
     .slot.target { background: #e7fbef; }
 
-    /* Narrower pills to leave scrollable blank space */
+    /* Pills inside schedule: narrower for scroll blank space */
     .pill {
       position: absolute; top: 2px; left: 28px; right: 28px;
       height: calc(var(--slot-h) - 4px);
@@ -45,9 +55,9 @@
       touch-action: pan-y; cursor: default;
       transition: left .12s ease, right .12s ease, transform .1s ease, opacity .1s ease;
     }
-    .pill.scheduled { left: 40px; right: 40px; }
+    .pill.scheduled { left: 40px; right: 40px; } /* extra side room once placed */
 
-    /* Only this tiny grip starts a drag */
+    /* Tiny drag handle (optional for mouse users) */
     .move-handle {
       position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
       width: 16px; height: 16px; border-radius: 4px;
@@ -61,9 +71,9 @@
       background-position: 0 0, 3px 3px, 0 3px, 3px 0;
       color: rgba(255,255,255,.9);
       mix-blend-mode: overlay;
-      -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
     }
 
+    /* Resize bar (bottom edge) */
     .handle { position: absolute; bottom: 0; left: 0; right: 0; height: 12px; background: rgba(255,255,255,.65); border-bottom-left-radius: 10px; border-bottom-right-radius: 10px; cursor: ns-resize; }
     .pill .lbl { padding: 0 .6rem 0 28px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
@@ -125,7 +135,7 @@
 
   <script>
   (function(){
-    // ===== Utilities =====
+    // ---- Helpers ----
     const SLOT_H = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--slot-h')) || 36;
     const pad = n => n.toString().padStart(2,'0');
     const hm12 = hm => { let h = parseInt(hm.slice(0,2),10), m = hm.slice(2); const ap = h<12?'AM':'PM'; h = h%12||12; return `${h}:${m} ${ap}`; };
@@ -142,15 +152,15 @@
     const undoBtn = document.getElementById('undoBtn');
     const trash = document.getElementById('trash');
 
-    // Disable iOS long-press text selection/callout on the schedule area
+    // Block iOS text-selection/callout in schedule
     ['contextmenu','selectstart','gesturestart'].forEach(evt=>{
       gridWrap.addEventListener(evt, e=>{
         if(e.target.closest('.pill') || e.target.closest('.slot')) e.preventDefault();
       }, {passive:false});
     });
 
-    // ===== Build Grid =====
-    (function buildGrid(){
+    // Build grid
+    (function(){
       for(let h=0; h<24; h++){
         const lbl = document.createElement('div');
         lbl.className='hour-label';
@@ -169,22 +179,22 @@
       }
     })();
 
-    // ===== Date =====
+    // Date
     const todayISO = new Date().toISOString().split('T')[0];
     datePicker.value = todayISO; datePicker.min = todayISO;
-    datePicker.addEventListener('change', () => { clearAndForget(); });
+    datePicker.addEventListener('change', clearAndForget);
 
-    // ===== Pill Factory =====
+    // Pill factory
     function makePill(txt,color){
       const p = document.createElement('div');
       p.className='pill';
       p.style.background=color;
       p.dataset.action=txt;
-      p.dataset.duration=1;
+      p.dataset.duration=1; // default for new item only
       p.innerHTML = '<span class="lbl"></span><div class="move-handle" title="Drag"></div><div class="handle" title="Resize"></div>';
-      addDragDesktop(p);
+      addDesktopDragFromHandle(p);
       addResize(p);
-      addPillPointer(p);
+      addPointerDragAnywhere(p); // long-press anywhere on pill (except bottom resize bar)
       return p;
     }
     function refreshLabel(p,slot){
@@ -195,9 +205,9 @@
       p.querySelector('.lbl').textContent = `${hm12(sHM)} – ${hm12(eHM)} • ${p.dataset.action}`;
     }
 
-    // ===== Desktop DnD (only from tiny handle) =====
+    // Desktop HTML5 drag (from tiny handle)
     let draggingNative = null;
-    function addDragDesktop(p){
+    function addDesktopDragFromHandle(p){
       const mover = p.querySelector('.move-handle');
       p.draggable = false;
       mover.draggable = true;
@@ -206,35 +216,37 @@
     }
     document.addEventListener('dragover', e => {
       e.preventDefault(); document.querySelectorAll('.slot.target').forEach(s=>s.classList.remove('target'));
-      const s = getSlotByPoint(e.clientX, e.clientY); if(s) s.classList.add('target');
+      const s = slotFromPoint(e.clientX, e.clientY); if(s) s.classList.add('target');
     });
     document.addEventListener('drop', e => {
-      const s = getSlotByPoint(e.clientX, e.clientY); if(!s) return;
+      const s = slotFromPoint(e.clientX, e.clientY); if(!s) return;
       s.classList.remove('target');
       if(draggingNative){ draggingNative.classList.add('scheduled'); s.appendChild(draggingNative); refreshLabel(draggingNative, s); draggingNative=null; }
     });
 
-    // ===== Mobile/Pointer DnD (only from tiny handle with long-press) =====
-    let isResizing = false, LONG_PRESS_MS = 250;
+    // Pointer drag (mobile): long-press ANYWHERE on pill body (except resize bar)
+    let isResizing = false;
     let draggingCustom = null, draggingFromPalette = null, dragGhost = null, dragActive = false;
-    function addPillPointer(p){
-      const mover = p.querySelector('.move-handle');
+    const LONG_PRESS_MS = 250, MOVE_THRESH = 6;
+
+    function addPointerDragAnywhere(p){
       let timer=null, sx=0, sy=0;
-      mover.addEventListener('pointerdown', e => {
+      p.addEventListener('pointerdown', e => {
         if(isResizing) return;
-        e.preventDefault();
+        if(e.target.closest('.handle')) return; // resizing zone
+        // don't block scrolling unless we actually start a drag
         sx = e.clientX; sy = e.clientY;
-        timer = setTimeout(()=>{ draggingCustom = p; startPointerDrag(e, p.dataset.action, getComputedStyle(p).backgroundColor); }, LONG_PRESS_MS);
-      }, {passive:false});
-      mover.addEventListener('pointermove', e => {
+        timer = setTimeout(()=>{ draggingCustom = p; beginPointerDrag(e, p.dataset.action, getComputedStyle(p).backgroundColor); }, LONG_PRESS_MS);
+      }, {passive:true});
+      p.addEventListener('pointermove', e => {
         if(!timer) return;
-        if(Math.hypot(e.clientX-sx, e.clientY-sy) > 6){
+        if(Math.hypot(e.clientX-sx, e.clientY-sy) > MOVE_THRESH){
           clearTimeout(timer); timer=null;
-          draggingCustom = p; startPointerDrag(e, p.dataset.action, getComputedStyle(p).backgroundColor);
+          draggingCustom = p; beginPointerDrag(e, p.dataset.action, getComputedStyle(p).backgroundColor);
         }
-      }, {passive:false});
-      mover.addEventListener('pointerup', ()=>{ if(timer){ clearTimeout(timer); timer=null; } }, {passive:true});
-      mover.addEventListener('pointercancel', ()=>{ if(timer){ clearTimeout(timer); timer=null; } }, {passive:true});
+      }, {passive:true});
+      p.addEventListener('pointerup', ()=>{ if(timer){ clearTimeout(timer); timer=null; } }, {passive:true});
+      p.addEventListener('pointercancel', ()=>{ if(timer){ clearTimeout(timer); timer=null; } }, {passive:true});
     }
 
     // Palette
@@ -245,15 +257,16 @@
         e.dataTransfer.setData('label', card.innerText);
         e.dataTransfer.setData('color', getComputedStyle(card).backgroundColor);
       });
-      // mobile/pointer
+      // mobile
       card.addEventListener('pointerdown', e => {
         e.preventDefault();
         draggingFromPalette = {label: card.innerText, color: getComputedStyle(card).backgroundColor};
-        startPointerDrag(e, card.innerText, getComputedStyle(card).backgroundColor);
+        beginPointerDrag(e, card.innerText, getComputedStyle(card).backgroundColor);
       }, {passive:false});
     });
 
-    function startPointerDrag(e, text, bg){
+    // Pointer-drag engine
+    function beginPointerDrag(e, text, bg){
       dragActive = true;
       dragGhost = makeGhost(text, bg);
       setGhostPos(dragGhost, e.clientX, e.clientY);
@@ -264,11 +277,13 @@
       if(!dragActive) return;
       setGhostPos(dragGhost, e.clientX, e.clientY);
       document.querySelectorAll('.slot.target').forEach(s=>s.classList.remove('target'));
-      const s = getSlotByPoint(e.clientX, e.clientY); if(s) s.classList.add('target');
+      const s = slotFromPoint(e.clientX, e.clientY); if(s) s.classList.add('target');
+
       // trash hover
       const r = trash.getBoundingClientRect();
       trash.classList.toggle('hover', e.clientX>=r.left && e.clientX<=r.right && e.clientY>=r.top && e.clientY<=r.bottom);
-      // auto-scroll while dragging
+
+      // auto-scroll
       const rect = gridWrap.getBoundingClientRect(), margin = 50;
       if(e.clientY < rect.top + margin) gridWrap.scrollTop -= 10;
       else if(e.clientY > rect.bottom - margin) gridWrap.scrollTop += 10;
@@ -278,7 +293,8 @@
       document.removeEventListener('pointerup', onPointerUp, {passive:false});
       const r = trash.getBoundingClientRect();
       const inTrash = e.clientX>=r.left && e.clientX<=r.right && e.clientY>=r.top && e.clientY<=r.bottom;
-      const s = getSlotByPoint(e.clientX, e.clientY);
+      const s = slotFromPoint(e.clientX, e.clientY);
+
       if(inTrash && draggingCustom){
         const parent = draggingCustom.parentElement;
         undoStack.push({node: draggingCustom, slot: parent});
@@ -287,11 +303,14 @@
       } else if(s){
         if(draggingFromPalette){
           const pill = makePill(draggingFromPalette.label, draggingFromPalette.color);
-          pill.classList.add('scheduled');
-          s.appendChild(pill); refreshLabel(pill, s);
+          pill.classList.add('scheduled');                      // width styling
+          s.appendChild(pill);                                  // NEW pill has duration 1 (by design)
+          refreshLabel(pill, s);
         } else if(draggingCustom){
+          // MOVE keeps current duration exactly
           draggingCustom.classList.add('scheduled');
-          s.appendChild(draggingCustom); refreshLabel(draggingCustom, s);
+          s.appendChild(draggingCustom);
+          refreshLabel(draggingCustom, s);
         }
       }
       dragActive = false;
@@ -302,7 +321,7 @@
       document.querySelectorAll('.slot.target').forEach(s=>s.classList.remove('target'));
     }
 
-    function getSlotByPoint(x,y){
+    function slotFromPoint(x,y){
       const el = document.elementFromPoint(x, y);
       if(!el) return null;
       if(el.classList && el.classList.contains('slot')) return el;
@@ -318,7 +337,7 @@
     }
     function setGhostPos(g, x, y){ g.style.left = x+'px'; g.style.top = y+'px'; }
 
-    // ===== Resizing (bottom bar) =====
+    // Resizing (bottom bar)
     function addResize(p){
       const hnd = p.querySelector('.handle'); let sy=0, sd=1;
       hnd.addEventListener('pointerdown', e => {
@@ -343,16 +362,16 @@
       });
     }
 
-    // ===== Trash / Undo =====
+    // Trash / Undo
     const undoStack = [];
     function showToast(){ toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 4000); }
-    document.getElementById('undoBtn').addEventListener('click', ()=>{
+    undoBtn.addEventListener('click', ()=>{
       const last = undoStack.pop();
       if(last){ last.slot.appendChild(last.node); refreshLabel(last.node, last.slot); }
       toast.classList.remove('show');
     });
 
-    // ===== Export =====
+    // Export
     exportBtn.addEventListener('click', ()=>{
       const events=[];
       document.querySelectorAll('.slot').forEach(slot=>{
@@ -370,28 +389,27 @@
              'DTSTART:' + fmtLocal(dtStart),
              'DTEND:' + fmtLocal(dtEnd),
              'SUMMARY:' + p.dataset.action,
-             'END:VEVENT'].join('\n')
+             'END:VEVENT'].join('\\n')
           );
         });
       });
       if(!events.length){ alert('No events to export'); return; }
-      const ics=['BEGIN:VCALENDAR','VERSION:2.0','CALSCALE:GREGORIAN',...events,'END:VCALENDAR'].join('\n');
+      const ics=['BEGIN:VCALENDAR','VERSION:2.0','CALSCALE:GREGORIAN',...events,'END:VCALENDAR'].join('\\n');
       const blob=new Blob([ics],{type:'text/calendar'});
       const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
       a.download = 'daily_schedule_' + datePicker.value + '.ics';
       a.click();
     });
 
-    // ===== Clear on Reload (no persistence) =====
+    // Clear on reload / on date change (no persistence)
     function clearAndForget(){
       const key = 'plannerData:'+ datePicker.value;
       localStorage.removeItem(key);
       document.querySelectorAll('.pill').forEach(p=>p.remove());
     }
-    // Immediately clear any prior saved data
-    clearAndForget();
+    clearAndForget(); // wipe right now
 
-    // ===== Current Time Line =====
+    // Current-time line
     function updateNowLine(){
       const now = new Date();
       const mins = now.getHours()*60 + now.getMinutes();
