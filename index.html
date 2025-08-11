@@ -19,6 +19,8 @@
 
     .card { padding: .5rem .6rem; margin: .35rem 0; border-radius: 8px; color: #fff; font-weight: 700; user-select: none; touch-action: none; cursor: grab; }
     .journaling{background:#ff9f43}.prayer{background:#5758BB}.gaming{background:#1B9CFC}.nap{background:#FDA7DF}.medicine{background:#e15f41}.handiwork{background:#2ecc71}.freetime{background:#3dc1d3}.dropoff{background:#34ace0}.therapy{background:#574b90}.bed{background:#2f3542}.appointment{background:#b33771}.chores{background:#9b59b6}
+    /* extra actions */
+    .work{background:#ff6f61}.phone{background:#16a085}.email{background:#2980b9}.exercise{background:#e67e22}.commute{background:#7f8c8d}.meeting{background:#8e44ad}.mealprep{background:#2ecc71}.groceries{background:#27ae60}.errands{background:#d35400}.focus{background:#34495e}.break{background:#95a5a6}.reading{background:#9b59b6}.family{background:#c0392b}
 
     #schedule { background: #eef3ff; display: flex; flex-direction: column; }
     #headerRow { display: flex; align-items: center; gap: .5rem; padding-right: .25rem; }
@@ -32,11 +34,37 @@
     .slot { height: var(--slot-h); border-bottom: 1px dashed #c6cff7; position: relative; touch-action: pan-y; }
     .slot:nth-child(4n) { border-bottom: 1px solid #aabaff; }
     .slot.target { background: #e7fbef; }
-    .pill { position: absolute; top: 2px; left: 10px; right: 10px; height: calc(var(--slot-h) - 4px); display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: .78rem; color: #fff; user-select: none; touch-action: pan-y; cursor: grab; transition: left .1s ease, right .1s ease, transform .1s ease, opacity .1s ease; }
-    .handle { position: absolute; bottom: 0; left: 0; right: 0; height: 12px; background: rgba(255,255,255,.65); border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; cursor: ns-resize; }
-    .pill .lbl { padding: 0 .4rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-    .pill.scheduled { left: 16px; right: 16px; }
 
+    /* pills: narrower so there's blank space to scroll */
+    .pill {
+      position: absolute; top: 2px; left: 18px; right: 18px;
+      height: calc(var(--slot-h) - 4px);
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 10px; font-size: .78rem; color: #fff;
+      user-select: none; touch-action: pan-y; cursor: default;
+      transition: left .12s ease, right .12s ease, transform .1s ease, opacity .1s ease;
+    }
+    /* after scheduled, a touch more padding (more negative space) */
+    .pill.scheduled { left: 24px; right: 24px; }
+
+    /* drag handle (tiny grip) - dragging starts only from here */
+    .move-handle {
+      position: absolute; left: 6px; top: 50%; transform: translateY(-50%);
+      width: 16px; height: 16px; border-radius: 4px;
+      cursor: grab; touch-action: none; opacity: .9;
+      background-image:
+        radial-gradient(currentColor 1px, transparent 1px),
+        radial-gradient(currentColor 1px, transparent 1px),
+        radial-gradient(currentColor 1px, transparent 1px),
+        radial-gradient(currentColor 1px, transparent 1px);
+      background-size: 6px 6px, 6px 6px, 6px 6px, 6px 6px;
+      background-position: 0 0, 3px 3px, 0 3px, 3px 0;
+      color: rgba(255,255,255,.9);
+      mix-blend-mode: overlay;
+    }
+
+    .handle { position: absolute; bottom: 0; left: 0; right: 0; height: 12px; background: rgba(255,255,255,.65); border-bottom-left-radius: 10px; border-bottom-right-radius: 10px; cursor: ns-resize; }
+    .pill .lbl { padding: 0 .6rem 0 26px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
     .current-time-line { position: absolute; left: 70px; right: 0; height: 2px; background: #ff3b3b; z-index: 1; pointer-events: none; }
 
@@ -47,7 +75,6 @@
     #toast.show { opacity: 1; pointer-events: auto; }
     #toast button { background: none; border: none; color: #a2c4ff; font-weight: 700; cursor: pointer; }
 
-    /* drag ghost */
     .drag-ghost { position: fixed; z-index: 2000; pointer-events: none; opacity: .9; transform: translate(-50%, -50%); border-radius: 8px; padding: .3rem .5rem; color: #fff; font-weight: 800; font-size: .8rem; white-space: nowrap; }
   </style>
 </head>
@@ -66,20 +93,20 @@
     <div class="card bed">Get ready for bed</div>
     <div class="card appointment">Appointment</div>
     <div class="card chores">Chores</div>
-      <div class="card work" style="background:#ff6f61">Work</div>
-    <div class="card phone" style="background:#16a085">Phone Call</div>
-    <div class="card email" style="background:#2980b9">Email</div>
-    <div class="card exercise" style="background:#e67e22">Exercise</div>
-    <div class="card commute" style="background:#7f8c8d">Commute</div>
-    <div class="card meeting" style="background:#8e44ad">Meeting</div>
-    <div class="card mealprep" style="background:#2ecc71">Meal Prep</div>
-    <div class="card groceries" style="background:#27ae60">Groceries</div>
-    <div class="card errands" style="background:#d35400">Errands</div>
-    <div class="card focus" style="background:#34495e">Focus Block</div>
-    <div class="card break" style="background:#95a5a6">Break</div>
-    <div class="card reading" style="background:#9b59b6">Reading</div>
-    <div class="card family" style="background:#c0392b">Family Time</div>
-</aside>
+    <div class="card work">Work</div>
+    <div class="card phone">Phone Call</div>
+    <div class="card email">Email</div>
+    <div class="card exercise">Exercise</div>
+    <div class="card commute">Commute</div>
+    <div class="card meeting">Meeting</div>
+    <div class="card mealprep">Meal Prep</div>
+    <div class="card groceries">Groceries</div>
+    <div class="card errands">Errands</div>
+    <div class="card focus">Focus Block</div>
+    <div class="card break">Break</div>
+    <div class="card reading">Reading</div>
+    <div class="card family">Family Time</div>
+  </aside>
 
   <section id="schedule" class="column">
     <div id="headerRow">
@@ -118,9 +145,9 @@
     const undoBtn = document.getElementById('undoBtn');
     const trash = document.getElementById('trash');
 
-    let isResizing = false; const LONG_PRESS_MS = 250;
-    let draggingNative = null;     // for desktop HTML5 DnD
-    let draggingCustom = null;     // for mobile pointer DnD (existing pill)
+    let isResizing = false, LONG_PRESS_MS = 250;
+    let draggingNative = null;     // desktop HTML5 DnD
+    let draggingCustom = null;     // mobile pointer DnD (existing pill)
     let draggingFromPalette = null;
     let dragGhost = null;
     let dragActive = false;
@@ -129,17 +156,17 @@
     // -------- Build Grid (ALWAYS) --------
     (function buildGrid(){
       for(let h=0; h<24; h++){
-        const lbl = document.createElement('div'); 
-        lbl.className='hour-label'; 
+        const lbl = document.createElement('div');
+        lbl.className='hour-label';
         lbl.textContent=`${(h%12||12)} ${h<12?'AM':'PM'}`;
         grid.appendChild(lbl);
 
-        const col = document.createElement('div'); 
+        const col = document.createElement('div');
         grid.appendChild(col);
 
         for(let q=0; q<4; q++){
-          const slot = document.createElement('div'); 
-          slot.className='slot'; 
+          const slot = document.createElement('div');
+          slot.className='slot';
           slot.dataset.hm = pad(h)+pad(q*15);
           col.appendChild(slot);
         }
@@ -149,36 +176,39 @@
     // -------- Date --------
     const todayISO = new Date().toISOString().split('T')[0];
     datePicker.value = todayISO; datePicker.min = todayISO;
-    let selectedDate = new Date();
-    datePicker.addEventListener('change', e => { selectedDate = new Date(e.target.value + 'T00:00'); saveSchedule(); loadSchedule(); });
+    datePicker.addEventListener('change', () => { saveSchedule(); loadSchedule(); });
 
     // -------- Pill Factory --------
     function makePill(txt,color){
-      const p = document.createElement('div'); 
-      p.className='pill'; 
-      p.style.background=color; 
-      p.dataset.action=txt; 
+      const p = document.createElement('div');
+      p.className='pill';
+      p.style.background=color;
+      p.dataset.action=txt;
       p.dataset.duration=1;
-      p.innerHTML = '<span class="lbl"></span><div class="handle" title="Resize"></div>';
+      p.innerHTML = '<span class="lbl"></span><div class="move-handle" title="Drag"></div><div class="handle" title="Resize"></div>';
       addDragDesktop(p);
-      addResize(p); 
+      addResize(p);
       addPillPointer(p);
       return p;
     }
 
-    function refreshLabel(p,slot){ 
-      if(!slot) return; 
-      const dur = parseInt(p.dataset.duration)||1; 
-      const sHM = slot.dataset.hm; 
-      const eHM = addM(sHM, dur*15); 
-      p.querySelector('.lbl').textContent = `${hm12(sHM)} – ${hm12(eHM)} • ${p.dataset.action}`; 
+    function refreshLabel(p,slot){
+      if(!slot) return;
+      const dur = parseInt(p.dataset.duration)||1;
+      const sHM = slot.dataset.hm;
+      const eHM = addM(sHM, dur*15);
+      p.querySelector('.lbl').textContent = `${hm12(sHM)} – ${hm12(eHM)} • ${p.dataset.action}`;
       debouncedSave();
     }
 
-    // -------- Desktop DnD (kept simple/reliable) --------
-    function addDragDesktop(p){ p.draggable = true;
-      p.addEventListener('dragstart',()=> draggingNative=p);
-      p.addEventListener('dragend',()=> draggingNative=null);
+    // -------- Desktop DnD (dragging only from the tiny handle) --------
+    function addDragDesktop(p){
+      const mover = p.querySelector('.move-handle');
+      p.draggable = false;
+      mover.addEventListener('dragstart', e => e.preventDefault()); // ensure we set explicitly
+      mover.draggable = true;
+      mover.addEventListener('dragstart',()=> draggingNative=p);
+      mover.addEventListener('dragend',()=> draggingNative=null);
     }
     document.addEventListener('dragover', e => {
       e.preventDefault(); document.querySelectorAll('.slot.target').forEach(s=>s.classList.remove('target'));
@@ -190,33 +220,39 @@
       if(draggingNative){ draggingNative.classList.add('scheduled'); s.appendChild(draggingNative); refreshLabel(draggingNative, s); draggingNative=null; }
     });
 
-    // -------- Mobile/Pointer DnD --------
+    // -------- Mobile/Pointer DnD (dragging only from the tiny handle) --------
     function addPillPointer(p){
-      let lpTimer=null, startX=0, startY=0, moved=false;
-      p.addEventListener('pointerdown', e => {
+      const mover = p.querySelector('.move-handle');
+      let lpTimer=null, startX=0, startY=0;
+
+      mover.addEventListener('pointerdown', e => {
         if(isResizing) return;
-        const handle = e.target.closest('.handle'); if(handle) return; // resize path
-        startX = e.clientX; startY = e.clientY; moved=false;
+        e.preventDefault();
+        startX = e.clientX; startY = e.clientY;
         lpTimer = setTimeout(()=>{ draggingCustom = p; startPointerDrag(e, p.dataset.action, getComputedStyle(p).backgroundColor); }, LONG_PRESS_MS);
-      }, {passive:true});
-      p.addEventListener('pointermove', e => {
+      }, {passive:false});
+
+      mover.addEventListener('pointermove', e => {
         if(!lpTimer) return;
-        if(Math.hypot(e.clientX-startX, e.clientY-startY) > 6){ // user is scrolling
+        if(Math.hypot(e.clientX-startX, e.clientY-startY) > 6){
           clearTimeout(lpTimer); lpTimer=null;
+          draggingCustom = p; startPointerDrag(e, p.dataset.action, getComputedStyle(p).backgroundColor);
         }
-      }, {passive:true});
-      p.addEventListener('pointerup', ()=>{ if(lpTimer){ clearTimeout(lpTimer); lpTimer=null; } }, {passive:true});
-      p.addEventListener('pointercancel', ()=>{ if(lpTimer){ clearTimeout(lpTimer); lpTimer=null; } }, {passive:true});
+      }, {passive:false});
+
+      mover.addEventListener('pointerup', ()=>{ if(lpTimer){ clearTimeout(lpTimer); lpTimer=null; } }, {passive:true});
+      mover.addEventListener('pointercancel', ()=>{ if(lpTimer){ clearTimeout(lpTimer); lpTimer=null; } }, {passive:true});
     }
 
+    // Palette
     document.querySelectorAll('#todo .card').forEach(card => {
-      // Native desktop drag for palette:
+      // desktop drag
       card.draggable = true;
       card.addEventListener('dragstart', e => {
         e.dataTransfer.setData('label', card.innerText);
         e.dataTransfer.setData('color', getComputedStyle(card).backgroundColor);
       });
-      // Pointer-based for mobile:
+      // mobile/pointer drag
       card.addEventListener('pointerdown', e => {
         e.preventDefault();
         draggingFromPalette = {label: card.innerText, color: getComputedStyle(card).backgroundColor};
@@ -238,11 +274,9 @@
       const s = getSlotByPoint(e.clientX, e.clientY); if(s) s.classList.add('target');
       // trash hover
       const r = trash.getBoundingClientRect();
-      const inTrash = e.clientX>=r.left && e.clientX<=r.right && e.clientY>=r.top && e.clientY<=r.bottom;
-      trash.classList.toggle('hover', inTrash);
+      trash.classList.toggle('hover', e.clientX>=r.left && e.clientX<=r.right && e.clientY>=r.top && e.clientY<=r.bottom);
       // auto-scroll
-      const rect = gridWrap.getBoundingClientRect();
-      const margin = 50;
+      const rect = gridWrap.getBoundingClientRect(), margin = 50;
       if(e.clientY < rect.top + margin) gridWrap.scrollTop -= 10;
       else if(e.clientY > rect.bottom - margin) gridWrap.scrollTop += 10;
     }
@@ -292,7 +326,7 @@
     }
     function setGhostPos(g, x, y){ g.style.left = x+'px'; g.style.top = y+'px'; }
 
-    // -------- Resizing --------
+    // -------- Resizing (bottom bar) --------
     function addResize(p){
       const hnd = p.querySelector('.handle'); let sy=0, sd=1;
       hnd.addEventListener('pointerdown', e => {
@@ -306,7 +340,7 @@
           p.style.height = `calc(var(--slot-h)*${d} - 4px)`;
           refreshLabel(p, p.parentElement);
         };
-        const up = evt => {
+        const up = () => {
           isResizing = false;
           try{ p.releasePointerCapture(e.pointerId); }catch{}
           document.removeEventListener('pointermove', mv, {passive:false});
@@ -343,12 +377,12 @@
              'DTSTART:' + fmtLocal(dtStart),
              'DTEND:' + fmtLocal(dtEnd),
              'SUMMARY:' + p.dataset.action,
-             'END:VEVENT'].join('\\n')
+             'END:VEVENT'].join('\n')
           );
         });
       });
       if(!events.length){ alert('No events to export'); return; }
-      const ics=['BEGIN:VCALENDAR','VERSION:2.0','CALSCALE:GREGORIAN',...events,'END:VCALENDAR'].join('\\n');
+      const ics=['BEGIN:VCALENDAR','VERSION:2.0','CALSCALE:GREGORIAN',...events,'END:VCALENDAR'].join('\n');
       const blob=new Blob([ics],{type:'text/calendar'});
       const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
       const fn = 'daily_schedule_' + datePicker.value + '.ics';
