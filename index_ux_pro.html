@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Daily Planner – Pro UX</title>
+  <style>
+    :root { --slot-h: 40px; --grid-left: 78px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #f7f9ff; height: 100vh; display: flex; overflow: hidden; }
+    @media (max-width: 599px) { body { flex-direction: column; } }
+    @media (min-width: 600px) { body { flex-direction: row; } }
+
+    /* Sidebar */
+    .column { flex: 1 1 0; overflow: auto; padding: .75rem; }
+    .holographic-background { background: linear-gradient(135deg,#d5d5d8 0%,#f3e7ff 25%,#e7faff 50%,#d5d5d8 75%,#f3e7ff 100%); }
+    #todo { max-width: 260px; border-right: 2px solid #dee2e6; }
+    @media (max-width: 599px) { #todo { max-width: 100%; border-bottom: 2px solid #dee2e6; } }
+    h2 { font-size: 1rem; margin-bottom: .5rem; color: #333; }
+
+    .card { padding: .5rem .6rem; margin: .35rem 0; border-radius: 8px; color: #fff; font-weight: 700; user-select: none; touch-action: none; }
+    .journaling{background:#ff9f43}.prayer{background:#5758BB}.gaming{background:#1B9CFC}.nap{background:#FDA7DF}.medicine{background:#e15f41}.handiwork{background:#2ecc71}.freetime{background:#3dc1d3}.dropoff{background:#34ace0}.therapy{background:#574b90}.bed{background:#2f3542}.appointment{background:#b33771}.chores{background:#9b59b6}
+
+    /* Schedule */
+    #schedule { background: #eef3ff; display: flex; flex-direction: column; gap: .5rem; }
+    #headerRow { display: flex; align-items: center; gap: .5rem; }
+    #datePicker, #zoomSlider { padding: .35rem .5rem; border: 1px solid #cbd3ff; border-radius: 8px; font: inherit; background: #fff; }
+    #exportBtn, #clearBtn { padding: .45rem .8rem; border: none; border-radius: 10px; background: #4c6fff; color: #fff; font-weight: 700; cursor: pointer; }
+    #clearBtn { background: #8892ff; }
+    #lockToggleLbl { display:flex; align-items:center; gap:.35rem; margin-left:auto; font-size:.9rem; color:#333; }
+    #allowOverlapLbl { display:flex; align-items:center; gap:.35rem; font-size:.9rem; color:#333; }
+
+    #gridWrap { position: relative; flex: 1 1 auto; overflow: auto; border: 1px solid #cbd3ff; border-radius: 12px; background: #f4f7ff; }
+    #grid { position: relative; display: grid; grid-template-columns: var(--grid-left) 1fr; }
+    .hour-label { height: calc(var(--slot-h)*4); line-height: calc(var(--slot-h)*4); text-align: right; padding-right: .4rem; font-size: .95rem; font-weight: 800; color: #333; border-bottom: 1px solid #d0d6ff; background: #edf1ff; position: sticky; left: 0; z-index: 1; }
+    .slot { height: var(--slot-h); border-bottom: 1px dashed #c6cff7; position: relative; }
+    .slot:nth-child(4n) { border-bottom: 1px solid #aabaff; }
+    .slot.highlight, .slot.target { background: #e7fbef; }
+    .pill { position: absolute; top: 2px; left: 2px; right: 2px; height: calc(var(--slot-h) - 4px); display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: .78rem; color: #fff; user-select: none; touch-action: none; }
+    .pill.selected { outline: 3px solid rgba(76,111,255,.75); }
+    .pill.conflict { box-shadow: 0 0 0 3px rgba(220, 38, 38, .75) inset; }
+    .handle { position: absolute; bottom: 0; left: 0; right: 0; height: 12px; background: rgba(255,255,255,.65); border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; cursor: ns-resize; }
+    .pill .lbl { padding: 0 .4rem; text-align: center; text-wrap: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .current-time-line { position: absolute; left: var(--grid-left); right: 0; height: 2px; background: #ff3b3b; z-index: 0; pointer-events: none; }
+
+    /* Trash + Toast */
+    #trash { position: fixed; right: 18px; bottom: 18px; width: 60px; height: 60px; border-radius: 50%; background: #ff6b6b; display: flex; align-items: center; justify-content: center; font-size: 26px; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); z-index: 1000; transition: background .2s; }
+    #trash.hover { background: #ff3b3b; }
+    #toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 16px; border-radius: 20px; opacity: 0; pointer-events: none; transition: opacity .3s; font-size: .86rem; z-index: 1001; display: flex; gap: .75rem; align-items: center; }
+    #toast.show { opacity: 1; pointer-events: auto; }
+    #toast button { background: none; border: none; color: #a2c4ff; font-weight: 700; cursor: pointer; }
+
+    /* Drag Ghost */
+    .drag-ghost { position: fixed; z-index: 2000; pointer-events: none; opacity: .9; transform: translate(-50%, -50%); border-radius: 8px; padding: .3rem .5rem; color: #fff; font-weight: 800; font-size: .8rem; white-space: nowrap; }
+
+    /* Modal */
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; align-items: center; justify-content: center; z-index: 1100; }
+    .modal.show { display: flex; }
+    .modal-card { background: #fff; width: min(480px, 92vw); border-radius: 14px; padding: 1rem; box-shadow: 0 10px 30px rgba(0,0,0,.2); display: grid; gap: .75rem; }
+    .modal-card header { font-weight: 800; font-size: 1rem; }
+    .row { display: grid; grid-template-columns: 1fr auto; gap: .5rem; align-items: center; }
+    .modal input[type="text"], .modal input[type="number"], .modal select { width: 100%; padding: .5rem; border: 1px solid #ccc; border-radius: 8px; }
+    .modal .actions { display: flex; gap: .5rem; justify-content: flex-end; }
+    .btn { padding: .5rem .8rem; border: none; border-radius: 10px; font-weight: 800; cursor: pointer; }
+    .btn.secondary { background: #eef2ff; color: #334; }
+    .btn.primary { background: #4c6fff; color: #fff; }
+    .btn.danger { background: #ff6b6b; color: #fff; }
+  </style>
+</head>
+<body>
+  <aside id="todo" class="column holographic-background">
+    <h2>Actions</h2>
+    <div class="card journaling">Journaling</div>
+    <div class="card prayer">Prayer & Bible</div>
+    <div class="card gaming">Gaming</div>
+    <div class="card nap">Nap</div>
+    <div class="card medicine">Take Medicine</div>
+    <div class="card handiwork">Handiwork</div>
+    <div class="card freetime">Free time</div>
+    <div class="card dropoff">Dropoff/Pickup</div>
+    <div class="card therapy">Therapy</div>
+    <div class="card bed">Get ready for bed</div>
+    <div class="card appointment">Appointment</div>
+    <div class="card chores">Chores</div>
+  </aside>
+
+  <section id="schedule" class="column">
+    <div id="headerRow">
+      <input type="date" id="datePicker" aria-label="Select date"/>
+      <label id="allowOverlapLbl"><input type="checkbox" id="allowOverlaps"/> Allow overlaps</label>
+      <label id="lockToggleLbl"><input type="checkbox" id="lockToggle"/> Lock</label>
+      <input type="range" id="zoomSlider" min="28" max="60" value="40" title="Zoom timeline"/>
+      <button id="clearBtn" title="Clear day">Clear</button>
+      <button id="exportBtn" title="Export to calendar">Export (.ics)</button>
+    </div>
+    <div id="gridWrap">
+      <div id="grid"></div>
+      <div class="current-time-line" id="nowLine"></div>
+    </div>
+  </section>
+
+  <div id="trash" aria-label="Delete">🗑</div>
+  <div id="toast">Deleted. <button id="undoBtn">Undo</button></div>
+
+  <!-- Edit Modal -->
+  <div class="modal" id="editModal" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+    <div class="modal-card">
+      <header id="editTitle">Edit Task</header>
+      <div class="row">
+        <label>Title</label>
+        <input id="editTitleInput" type="text" />
+      </div>
+      <div class="row">
+        <label>Duration (15-min slots)</label>
+        <input id="editDurationInput" type="number" min="1" max="96" />
+      </div>
+      <div class="row">
+        <label>Color</label>
+        <select id="editColor">
+          <option value="#ff9f43">Orange</option>
+          <option value="#5758BB">Indigo</option>
+          <option value="#1B9CFC">Blue</option>
+          <option value="#FDA7DF">Pink</option>
+          <option value="#e15f41">Red</option>
+          <option value="#2ecc71">Green</option>
+          <option value="#3dc1d3">Teal</option>
+          <option value="#34ace0">Cyan</option>
+          <option value="#574b90">Purple</option>
+          <option value="#2f3542">Slate</option>
+          <option value="#b33771">Magenta</option>
+          <option value="#9b59b6">Violet</option>
+        </select>
+      </div>
+      <div class="actions">
+        <button class="btn secondary" id="duplicateBtn">Duplicate</button>
+        <button class="btn danger" id="deleteBtn">Delete</button>
+        <button class="btn primary" id="saveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    // ---------- Helpers ----------
+    const SLOT_H = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--slot-h'));
+    const pad = n => n.toString().padStart(2,'0');
+    const hm12 = hm => { let h = parseInt(hm.slice(0,2)), m = hm.slice(2); const ap = h<12?'AM':'PM'; h = h%12||12; return `${h}:${m} ${ap}`; };
+    const addM = (hm, mins) => { const t = parseInt(hm.slice(0,2))*60 + parseInt(hm.slice(2)) + mins; const d=((t%1440)+1440)%1440; return pad(Math.floor(d/60)%24) + pad(d%60); };
+    const minutes = hm => parseInt(hm.slice(0,2))*60 + parseInt(hm.slice(2));
+    const fmtLocal = d => {
+      const y = d.getFullYear();
+      const mo = pad(d.getMonth()+1);
+      const da = pad(d.getDate());
+      const hh = pad(d.getHours());
+      const mm = pad(d.getMinutes());
+      const ss = pad(d.getSeconds());
+      return `${y}${mo}${da}T${hh}${mm}${ss}`; // local time (no Z)
+    };
+    const grid = document.getElementById('grid');
+    const gridWrap = document.getElementById('gridWrap');
+    const nowLine = document.getElementById('nowLine');
+    const datePicker = document.getElementById('datePicker');
+    const exportBtn = document.getElementById('exportBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const zoomSlider = document.getElementById('zoomSlider');
+    const allowOverlapsChk = document.getElementById('allowOverlaps');
+    const lockToggle = document.getElementById('lockToggle');
+    const toast = document.getElementById('toast');
+    const undoBtn = document.getElementById('undoBtn');
+    const trash = document.getElementById('trash');
+    let isResizing = false;
+    let dragging = null, undoStack = [];
+    let selectedPill = null;
+
+    // ---------- Build Grid ----------
+    for(let h=0; h<24; h++){
+      const lbl = document.createElement('div'); 
+      lbl.className='hour-label'; 
+      lbl.textContent=`${(h%12||12)} ${h<12?'AM':'PM'}`;
+      grid.appendChild(lbl);
+
+      const col = document.createElement('div'); 
+      grid.appendChild(col);
+
+      for(let q=0; q<4; q++){
+        const slot = document.createElement('div'); 
+        slot.className='slot'; 
+        slot.dataset.hm = pad(h)+pad(q*15);
+        col.appendChild(slot);
+      }
+    }
+
+    // ---------- Date ----------
+    const todayISO = new Date().toISOString().split('T')[0];
+    datePicker.value = todayISO; datePicker.min = todayISO;
+    let selectedDate = new Date();
+    datePicker.addEventListener('change', e => { selectedDate = new Date(e.target.value + 'T00:00'); saveSchedule(); loadSchedule(); });
+
+    // ---------- Pill Factory ----------
+    function makePill(txt,color){
+      const p = document.createElement('div'); 
+      p.className='pill'; 
+      p.style.background=color; 
+      p.dataset.action=txt; 
+      p.dataset.duration=1;
+      p.tabIndex = 0;
+      p.innerHTML = '<span class="lbl"></span><div class="handle" title="Resize"></div>';
+      addResize(p); 
+      addPillInteractions(p);
+      return p;
+    }
+
+    function refreshLabel(p,slot){ 
+      if(!slot) return; 
+      const dur = parseInt(p.dataset.duration)||1; 
+      const sHM = slot.dataset.hm; 
+      const eHM = addM(sHM, dur*15); 
+      p.querySelector('.lbl').textContent = `${hm12(sHM)} – ${hm12(eHM)} • ${p.dataset.action}`; 
+      p.classList.toggle('conflict', hasConflict(p, sHM, dur));
+      debouncedSave();
+    }
+
+    function getAllEvents(exclude=null){
+      const events = [];
+      document.querySelectorAll('.slot').forEach(slot=>{
+        slot.querySelectorAll('.pill').forEach(p=>{
+          if(p===exclude) return;
+          const sHM = slot.dataset.hm;
+          const dur = parseInt(p.dataset.duration)||1;
+          events.push({start:sHM, end:addM(sHM, dur*15), pill:p});
+        });
+      });
+      return events;
+    }
+
+    function rangesOverlap(aStart, aEnd, bStart, bEnd){
+      const aS = minutes(aStart), aE = minutes(aEnd);
+      const bS = minutes(bStart), bE = minutes(bEnd);
+      return Math.max(aS, bS) < Math.min(aE, bE);
+    }
+
+    function hasConflict(pill, startHM, duration){
+      const endHM = addM(startHM, duration*15);
+      return getAllEvents(pill).some(ev => rangesOverlap(startHM, endHM, ev.start, ev.end));
+    }
+
+    function findNextFreeStart(startHM, duration){
+      let cursor = startHM;
+      for(let steps=0; steps<96; steps++){
+        if(!hasConflict(null, cursor, duration)) return cursor;
+        cursor = addM(cursor, 15);
+      }
+      return startHM; // fallback
+    }
+
+    // ---------- Drag & Drop (Pointer-based) ----------
+    let draggingFromPalette = null;
+    let draggingPill = null;
+    let dragGhost = null;
+    let dragActive = false;
+    let longPressTimer = null;
+    const LONG_PRESS_MS = 250;
+    const DRAG_THRESHOLD = 6;
+    let startX=0, startY=0, moved=false;
+
+    function makeGhost(text, bg){
+      const g = document.createElement('div');
+      g.className = 'drag-ghost';
+      g.style.background = bg;
+      g.textContent = text;
+      document.body.appendChild(g);
+      return g;
+    }
+    function setGhostPos(g, x, y){ g.style.left = x+'px'; g.style.top = y+'px'; }
+    function clearTargets(){ document.querySelectorAll('.slot.target').forEach(s=>s.classList.remove('target')); }
+    function slotFromPoint(x, y){
+      const el = document.elementFromPoint(x, y);
+      if(!el) return null;
+      if(el.classList && el.classList.contains('slot')) return el;
+      return el.closest && el.closest('.slot');
+    }
+    function onPointerMove(e){
+      if(isResizing) return;
+      if(!dragActive) return;
+      const x = e.clientX, y = e.clientY;
+      if(Math.hypot(x-startX, y-startY) > DRAG_THRESHOLD) moved = true;
+      if(dragGhost) setGhostPos(dragGhost, x, y);
+      clearTargets();
+      const s = slotFromPoint(x, y);
+      if(s) s.classList.add('target');
+
+      // Auto-scroll
+      const rect = gridWrap.getBoundingClientRect();
+      const margin = 50;
+      if(y < rect.top + margin) gridWrap.scrollTop -= 10;
+      else if(y > rect.bottom - margin) gridWrap.scrollTop += 10;
+
+      // Trash hover
+      if(trash){
+        const r = trash.getBoundingClientRect();
+        const inTrash = x>=r.left && x<=r.right && y>=r.top && y<=r.bottom;
+        trash.classList.toggle('hover', !!inTrash);
+      }
+    }
+    function onPointerUp(e){
+      if(isResizing) return;
+      document.removeEventListener('pointermove', onPointerMove, {passive:false});
+      document.removeEventListener('pointerup', onPointerUp, {passive:false});
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+
+      if(!dragActive){ cleanupDrag(); return; }
+      dragActive = false;
+      clearTargets();
+      trash && trash.classList.remove('hover');
+      const x = e.clientX, y = e.clientY;
+      const s = slotFromPoint(x, y);
+      const tr = trash.getBoundingClientRect();
+      const inTrash = x>=tr.left && x<=tr.right && y>=tr.top && y<=tr.bottom;
+
+      if(inTrash && draggingPill){
+        const parent = draggingPill.parentElement;
+        undoStack.push({node: draggingPill, slot: parent});
+        parent.removeChild(draggingPill);
+        showToast();
+        saveSchedule();
+      } else if(s){
+        if(draggingFromPalette){
+          const txt = draggingFromPalette.label, color = draggingFromPalette.color;
+          const pill = makePill(txt, color);
+          // If overlaps not allowed, find next free contiguous range
+          if(!allowOverlapsChk.checked){
+            const startHM = s.dataset.hm;
+            const next = findNextFreeStart(startHM, parseInt(pill.dataset.duration));
+            const targetSlot = document.querySelector(`.slot[data-hm="${next}"]`) || s;
+            targetSlot.appendChild(pill);
+            refreshLabel(pill, targetSlot);
+          }else{
+            s.appendChild(pill);
+            refreshLabel(pill, s);
+          }
+        } else if(draggingPill){
+          const dur = parseInt(draggingPill.dataset.duration)||1;
+          const startHM = s.dataset.hm;
+          if(!allowOverlapsChk.checked){
+            const next = findNextFreeStart(startHM, dur);
+            const targetSlot = document.querySelector(`.slot[data-hm="${next}"]`) || s;
+            targetSlot.appendChild(draggingPill);
+            refreshLabel(draggingPill, targetSlot);
+          }else{
+            s.appendChild(draggingPill);
+            refreshLabel(draggingPill, s);
+          }
+          draggingPill.draggable = true;
+        }
+      }
+      cleanupDrag();
+    }
+    function cleanupDrag(){
+      draggingFromPalette = null;
+      draggingPill = null;
+      if(dragGhost){ dragGhost.remove(); dragGhost = null; }
+    }
+    function startDragFromPalette(card, e){
+      draggingFromPalette = { label: card.innerText, color: getComputedStyle(card).backgroundColor };
+      dragGhost = makeGhost(card.innerText, getComputedStyle(card).backgroundColor);
+      setGhostPos(dragGhost, e.clientX, e.clientY);
+      dragActive = true; moved = false; startX = e.clientX; startY = e.clientY;
+      document.addEventListener('pointermove', onPointerMove, {passive:false});
+      document.addEventListener('pointerup', onPointerUp, {passive:false});
+    }
+    function startDragPill(pill, e){
+      if(lockToggle.checked) return;
+      draggingPill = pill;
+      const txt = pill.dataset.action || pill.textContent.trim();
+      const bg = getComputedStyle(pill).backgroundColor;
+      dragGhost = makeGhost(txt, bg);
+      setGhostPos(dragGhost, e.clientX, e.clientY);
+      dragActive = true; moved = false; startX = e.clientX; startY = e.clientY;
+      pill.draggable = false;
+      document.addEventListener('pointermove', onPointerMove, {passive:false});
+      document.addEventListener('pointerup', onPointerUp, {passive:false});
+    }
+
+    // Palette interactions (long-press to start)
+    document.querySelectorAll('#todo .card').forEach(card => {
+      card.addEventListener('pointerdown', e => {
+        if(isResizing) return;
+        e.preventDefault();
+        startX = e.clientX; startY = e.clientY; moved = false;
+        longPressTimer = setTimeout(()=> startDragFromPalette(card, e), LONG_PRESS_MS);
+      }, {passive:false});
+      card.addEventListener('pointermove', e => {
+        if(!longPressTimer) return;
+        if(Math.hypot(e.clientX-startX, e.clientY-startY) > DRAG_THRESHOLD){
+          clearTimeout(longPressTimer); longPressTimer=null;
+          startDragFromPalette(card, e);
+        }
+      }, {passive:false});
+      card.addEventListener('pointerup', ()=>{ clearTimeout(longPressTimer); longPressTimer=null; }, {passive:false});
+      card.addEventListener('pointercancel', ()=>{ clearTimeout(longPressTimer); longPressTimer=null; }, {passive:false});
+    });
+
+    // Pills: selection, keyboard, double-tap edit, long-press drag
+    function addPillInteractions(p){
+      p.addEventListener('click', e => {
+        if(isResizing || dragActive) return;
+        setSelected(p, true);
+      });
+      p.addEventListener('dblclick', e => {
+        if(isResizing || dragActive) return;
+        openEditModal(p);
+      });
+      // Mobile double-tap fallback: quick tap opens edit if already selected
+      p.addEventListener('pointerdown', e => {
+        if(isResizing) return;
+        const handle = e.target.closest('.handle');
+        if(handle) return; // resizing path handles its own capture
+        startX = e.clientX; startY = e.clientY; moved=false;
+        longPressTimer = setTimeout(()=> startDragPill(p, e), LONG_PRESS_MS);
+      }, {passive:false});
+      p.addEventListener('pointermove', e => {
+        if(!longPressTimer) return;
+        if(Math.hypot(e.clientX-startX, e.clientY-startY) > DRAG_THRESHOLD){
+          clearTimeout(longPressTimer); longPressTimer=null;
+          startDragPill(p, e);
+        }
+      }, {passive:false});
+      p.addEventListener('pointerup', e => {
+        if(longPressTimer){ 
+          clearTimeout(longPressTimer); longPressTimer=null; 
+          if(selectedPill === p && !moved) openEditModal(p);
+          setSelected(p, true);
+        }
+      }, {passive:false});
+      p.addEventListener('keydown', e => {
+        if(lockToggle.checked) return;
+        const slot = p.parentElement;
+        if(e.key==='ArrowUp'){ e.preventDefault(); movePillBy(p, slot, -15); }
+        if(e.key==='ArrowDown'){ e.preventDefault(); movePillBy(p, slot, +15); }
+        if(e.key==='Delete' || e.key==='Backspace'){ e.preventDefault(); deletePill(p); }
+        if(e.key==='Shift'){ /* handled via keydown combos */ }
+        if(e.key==='PageUp'){ e.preventDefault(); resizePillBy(p, +1); }
+        if(e.key==='PageDown'){ e.preventDefault(); resizePillBy(p, -1); }
+      });
+    }
+
+    function setSelected(p, on){
+      if(selectedPill) selectedPill.classList.remove('selected');
+      selectedPill = on ? p : null;
+      if(on) p.classList.add('selected');
+    }
+
+    function movePillBy(p, slot, deltaMin){
+      const newHM = addM(slot.dataset.hm, deltaMin);
+      const targetSlot = document.querySelector(\`.slot[data-hm="\${newHM}"]\`);
+      if(!targetSlot) return;
+      const dur = parseInt(p.dataset.duration)||1;
+      if(!allowOverlapsChk.checked){
+        const next = findNextFreeStart(newHM, dur);
+        const ts = document.querySelector(\`.slot[data-hm="\${next}"]\`) || targetSlot;
+        ts.appendChild(p);
+        refreshLabel(p, ts);
+      } else {
+        targetSlot.appendChild(p);
+        refreshLabel(p, targetSlot);
+      }
+    }
+    function resizePillBy(p, slotsDelta){
+      const d = Math.max(1, (parseInt(p.dataset.duration)||1) + slotsDelta);
+      p.dataset.duration = d;
+      p.style.height = \`calc(var(--slot-h)*\${d} - 4px)\`;
+      refreshLabel(p, p.parentElement);
+    }
+
+    function deletePill(p){
+      undoStack.push({node:p, slot:p.parentElement});
+      p.parentElement.removeChild(p);
+      showToast(); saveSchedule();
+    }
+
+    // ---------- Resizing ----------
+    function addResize(p){
+      const hnd = p.querySelector('.handle'); let sy=0, sd=1;
+      hnd.addEventListener('pointerdown', e => {
+        if(lockToggle.checked) return;
+        e.stopPropagation(); e.preventDefault();
+        isResizing = true;
+        sy = e.clientY; sd = parseInt(p.dataset.duration)||1;
+        p.setPointerCapture(e.pointerId);
+        const mv = evt => {
+          const d = Math.max(1, sd + Math.round((evt.clientY - sy)/SLOT_H()));
+          p.dataset.duration = d;
+          p.style.height = \`calc(var(--slot-h)*\${d} - 4px)\`;
+          refreshLabel(p, p.parentElement);
+        };
+        const up = evt => {
+          isResizing = false;
+          try { p.releasePointerCapture(e.pointerId); } catch{}
+          document.removeEventListener('pointermove', mv);
+          document.removeEventListener('pointerup', up);
+        };
+        document.addEventListener('pointermove', mv, {passive:false});
+        document.addEventListener('pointerup', up, {passive:false});
+      });
+    }
+
+    // ---------- Slot hover highlight ----------
+    function getSlotFromEvent(e){
+      const el = document.elementFromPoint(e.clientX,e.clientY);
+      return el && el.classList && el.classList.contains('slot') ? el : null;
+    }
+    document.addEventListener('dragover', e => {
+      e.preventDefault(); 
+      document.querySelectorAll('.slot.highlight').forEach(s=>s.classList.remove('highlight'));
+      const s = getSlotFromEvent(e); if(s) s.classList.add('highlight');
+    });
+
+    // ---------- Trash / Undo ----------
+    function showToast(){ toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 5000); }
+    undoBtn.addEventListener('click', ()=>{
+      const last = undoStack.pop();
+      if(last){ last.slot.appendChild(last.node); refreshLabel(last.node, last.slot); saveSchedule(); }
+      toast.classList.remove('show');
+    });
+
+    // ---------- Export ----------
+    exportBtn.addEventListener('click', ()=>{
+      const events=[];
+      document.querySelectorAll('.slot').forEach(slot=>{
+        slot.querySelectorAll('.pill').forEach(p=>{
+          const dur = parseInt(p.dataset.duration)||1;
+          const sHM = slot.dataset.hm;
+          const startMin = minutes(sHM);
+          const endMin = startMin + dur*15;
+          const dtStart = new Date(datePicker.value + 'T00:00');
+          const dtEnd = new Date(datePicker.value + 'T00:00');
+          dtStart.setMinutes(startMin);
+          dtEnd.setMinutes(endMin);
+          events.push(
+            ['BEGIN:VEVENT',
+             'DTSTART:' + fmtLocal(dtStart),
+             'DTEND:' + fmtLocal(dtEnd),
+             'SUMMARY:' + p.dataset.action,
+             'END:VEVENT'].join('\n')
+          );
+        });
+      });
+      if(!events.length){ alert('No events to export'); return; }
+      const ics=['BEGIN:VCALENDAR','VERSION:2.0','CALSCALE:GREGORIAN',...events,'END:VCALENDAR'].join('\n');
+      const blob=new Blob([ics],{type:'text/calendar'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='daily_schedule.ics'; a.click();
+    });
+
+    // ---------- Clear Day ----------
+    clearBtn.addEventListener('click', ()=>{
+      if(!confirm('Clear all events for this day?')) return;
+      document.querySelectorAll('.pill').forEach(p=>p.remove());
+      saveSchedule();
+    });
+
+    // ---------- Zoom ----------
+    zoomSlider.addEventListener('input', e => {
+      const v = parseInt(e.target.value,10);
+      document.documentElement.style.setProperty('--slot-h', v+'px');
+      updateNowLine();
+      document.querySelectorAll('.pill').forEach(p=>{
+        const d = parseInt(p.dataset.duration)||1;
+        p.style.height = \`calc(var(--slot-h)*\${d} - 4px)\`;
+      });
+      debouncedSave();
+    });
+
+    // ---------- Current Time Line ----------
+    function updateNowLine(){
+      const now = new Date();
+      const mins = now.getHours()*60 + now.getMinutes();
+      const pxPerMin = SLOT_H()/15;
+      nowLine.style.top = (mins * pxPerMin) + 'px';
+    }
+    setInterval(updateNowLine, 60000);
+    updateNowLine();
+
+    // ---------- Save / Load ----------
+    function saveSchedule(){
+      const key = 'plannerData:'+ datePicker.value;
+      const data = [];
+      document.querySelectorAll('.slot').forEach(slot => {
+        slot.querySelectorAll('.pill').forEach(p => {
+          data.push({
+            hm: slot.dataset.hm,
+            action: p.dataset.action,
+            duration: p.dataset.duration,
+            color: p.style.background
+          });
+        });
+      });
+      localStorage.setItem(key, JSON.stringify(data));
+      localStorage.setItem('plannerZoom', getComputedStyle(document.documentElement).getPropertyValue('--slot-h'));
+      localStorage.setItem('allowOverlaps', allowOverlapsChk.checked ? '1' : '0');
+      localStorage.setItem('locked', lockToggle.checked ? '1' : '0');
+    }
+    let saveTimer=null;
+    const debouncedSave = ()=>{ clearTimeout(saveTimer); saveTimer = setTimeout(saveSchedule, 150); };
+
+    function loadSchedule(){
+      const key = 'plannerData:'+ datePicker.value;
+      document.querySelectorAll('.pill').forEach(p=>p.remove());
+      const raw = localStorage.getItem(key);
+      if(raw){
+        try{
+          JSON.parse(raw).forEach(ev => {
+            const slot = document.querySelector(\`.slot[data-hm="\${ev.hm}"]\`);
+            if(slot){
+              const pill = makePill(ev.action, ev.color);
+              pill.dataset.duration = ev.duration;
+              pill.style.height = \`calc(var(--slot-h)*\${ev.duration} - 4px)\`;
+              slot.appendChild(pill);
+              refreshLabel(pill, slot);
+            }
+          });
+        }catch(e){ console.error(e); }
+      }
+      const z = localStorage.getItem('plannerZoom'); if(z){ document.documentElement.style.setProperty('--slot-h', z.trim()); zoomSlider.value = parseInt(parseFloat(z)); }
+      allowOverlapsChk.checked = localStorage.getItem('allowOverlaps')==='1';
+      lockToggle.checked = localStorage.getItem('locked')==='1';
+    }
+
+    // Initial load
+    loadSchedule();
+
+    // ---------- Modal Editing ----------
+    const modal = document.getElementById('editModal');
+    const titleInput = document.getElementById('editTitleInput');
+    const durInput = document.getElementById('editDurationInput');
+    const colorSelect = document.getElementById('editColor');
+    const saveBtn = document.getElementById('saveBtn');
+    const deleteBtn = document.getElementById('deleteBtn');
+    const dupBtn = document.getElementById('duplicateBtn');
+    let editingPill = null;
+
+    function openEditModal(p){
+      editingPill = p;
+      titleInput.value = p.dataset.action || '';
+      durInput.value = parseInt(p.dataset.duration)||1;
+      colorSelect.value = rgbToHex(getComputedStyle(p).backgroundColor) || '#4c6fff';
+      modal.classList.add('show');
+    }
+    function closeModal(){ modal.classList.remove('show'); editingPill = null; }
+
+    saveBtn.onclick = ()=>{
+      if(!editingPill) return;
+      editingPill.dataset.action = titleInput.value || editingPill.dataset.action;
+      let d = Math.max(1, Math.min(96, parseInt(durInput.value)||1));
+      editingPill.dataset.duration = d;
+      editingPill.style.background = colorSelect.value;
+      editingPill.style.height = \`calc(var(--slot-h)*\${d} - 4px)\`;
+      refreshLabel(editingPill, editingPill.parentElement);
+      closeModal();
+    };
+    deleteBtn.onclick = ()=>{ if(!editingPill) return; deletePill(editingPill); closeModal(); };
+    dupBtn.onclick = ()=>{
+      if(!editingPill) return;
+      const slot = editingPill.parentElement;
+      const copy = makePill(editingPill.dataset.action, getComputedStyle(editingPill).backgroundColor);
+      copy.dataset.duration = editingPill.dataset.duration;
+      copy.style.height = editingPill.style.height;
+      slot.appendChild(copy);
+      refreshLabel(copy, slot);
+      closeModal();
+    };
+    modal.addEventListener('click', e => { if(e.target===modal) closeModal(); });
+
+    function rgbToHex(rgb){
+      const m = rgb.match(/\d+/g);
+      if(!m) return null;
+      return '#' + m.slice(0,3).map(n=>('0'+parseInt(n,10).toString(16)).slice(-2)).join('');
+    }
+
+  })();
+  </script>
+</body>
+</html>
