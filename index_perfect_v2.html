@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Daily Planner – Stable Mobile</title>
+  <style>
+    :root { --slot-h: 36px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #f7f9ff; height: 100vh; display: flex; overflow: hidden; }
+    @media (max-width: 599px) { body { flex-direction: column; } }
+    @media (min-width: 600px) { body { flex-direction: row; } }
+
+    .column { flex: 1 1 0; overflow: auto; padding: .75rem; }
+    .holographic-background { background: linear-gradient(135deg,#d5d5d8 0%,#f3e7ff 25%,#e7faff 50%,#d5d5d8 75%,#f3e7ff 100%); }
+    #todo { max-width: 260px; border-right: 2px solid #dee2e6; }
+    @media (max-width: 599px) { #todo { max-width: 100%; border-bottom: 2px solid #dee2e6; } }
+    h2 { font-size: 1rem; margin-bottom: .5rem; color: #333; }
+
+    .card { padding: .5rem .6rem; margin: .35rem 0; border-radius: 8px; color: #fff; font-weight: 700; user-select: none; touch-action: none; cursor: grab; }
+    .journaling{background:#ff9f43}.prayer{background:#5758BB}.gaming{background:#1B9CFC}.nap{background:#FDA7DF}.medicine{background:#e15f41}.handiwork{background:#2ecc71}.freetime{background:#3dc1d3}.dropoff{background:#34ace0}.therapy{background:#574b90}.bed{background:#2f3542}.appointment{background:#b33771}.chores{background:#9b59b6}
+
+    #schedule { background: #eef3ff; display: flex; flex-direction: column; }
+    #headerRow { display: flex; align-items: center; gap: .5rem; padding-right: .25rem; }
+    #datePicker { padding: .35rem .5rem; border: 1px solid #cbd3ff; border-radius: 8px; font: inherit; background: #fff; }
+    #exportBtn { margin-left: auto; padding: .45rem .8rem; border: none; border-radius: 10px; background: #4c6fff; color: #fff; font-weight: 700; cursor: pointer; }
+    #exportBtn:hover { background: #355eff; }
+
+    #gridWrap { position: relative; flex: 1 1 auto; overflow: auto; border: 1px solid #cbd3ff; border-radius: 12px; background: #f4f7ff; }
+    #grid { position: relative; display: grid; grid-template-columns: 70px 1fr; }
+    .hour-label { height: calc(var(--slot-h)*4); line-height: calc(var(--slot-h)*4); text-align: right; padding-right: .4rem; font-size: .9rem; font-weight: bold; color: #333; border-bottom: 1px solid #d0d6ff; background: #edf1ff; }
+    .slot { height: var(--slot-h); border-bottom: 1px dashed #c6cff7; position: relative; touch-action: pan-y; }
+    .slot:nth-child(4n) { border-bottom: 1px solid #aabaff; }
+    .slot.target { background: #e7fbef; }
+    .pill { position: absolute; top: 2px; left: 10px; right: 10px; height: calc(var(--slot-h) - 4px); display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: .78rem; color: #fff; user-select: none; touch-action: pan-y; cursor: grab; transition: left .1s ease, right .1s ease, transform .1s ease, opacity .1s ease; }
+    .handle { position: absolute; bottom: 0; left: 0; right: 0; height: 12px; background: rgba(255,255,255,.65); border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; cursor: ns-resize; }
+    .pill .lbl { padding: 0 .4rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .pill.scheduled { left: 16px; right: 16px; }
+
+
+    .current-time-line { position: absolute; left: 70px; right: 0; height: 2px; background: #ff3b3b; z-index: 1; pointer-events: none; }
+
+    #trash { position: fixed; right: 18px; bottom: 18px; width: 60px; height: 60px; border-radius: 50%; background: #ff6b6b; display: flex; align-items: center; justify-content: center; font-size: 26px; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); z-index: 1000; transition: background .2s; }
+    #trash.hover { background: #ff3b3b; }
+
+    #toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 16px; border-radius: 20px; opacity: 0; pointer-events: none; transition: opacity .3s; font-size: .86rem; z-index: 1001; display: flex; gap: .75rem; align-items: center; }
+    #toast.show { opacity: 1; pointer-events: auto; }
+    #toast button { background: none; border: none; color: #a2c4ff; font-weight: 700; cursor: pointer; }
+
+    /* drag ghost */
+    .drag-ghost { position: fixed; z-index: 2000; pointer-events: none; opacity: .9; transform: translate(-50%, -50%); border-radius: 8px; padding: .3rem .5rem; color: #fff; font-weight: 800; font-size: .8rem; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <aside id="todo" class="column holographic-background">
+    <h2>Actions</h2>
+    <div class="card journaling">Journaling</div>
+    <div class="card prayer">Prayer & Bible</div>
+    <div class="card gaming">Gaming</div>
+    <div class="card nap">Nap</div>
+    <div class="card medicine">Take Medicine</div>
+    <div class="card handiwork">Handiwork</div>
+    <div class="card freetime">Free time</div>
+    <div class="card dropoff">Dropoff/Pickup</div>
+    <div class="card therapy">Therapy</div>
+    <div class="card bed">Get ready for bed</div>
+    <div class="card appointment">Appointment</div>
+    <div class="card chores">Chores</div>
+      <div class="card work" style="background:#ff6f61">Work</div>
+    <div class="card phone" style="background:#16a085">Phone Call</div>
+    <div class="card email" style="background:#2980b9">Email</div>
+    <div class="card exercise" style="background:#e67e22">Exercise</div>
+    <div class="card commute" style="background:#7f8c8d">Commute</div>
+    <div class="card meeting" style="background:#8e44ad">Meeting</div>
+    <div class="card mealprep" style="background:#2ecc71">Meal Prep</div>
+    <div class="card groceries" style="background:#27ae60">Groceries</div>
+    <div class="card errands" style="background:#d35400">Errands</div>
+    <div class="card focus" style="background:#34495e">Focus Block</div>
+    <div class="card break" style="background:#95a5a6">Break</div>
+    <div class="card reading" style="background:#9b59b6">Reading</div>
+    <div class="card family" style="background:#c0392b">Family Time</div>
+</aside>
+
+  <section id="schedule" class="column">
+    <div id="headerRow">
+      <input type="date" id="datePicker" aria-label="Select date"/>
+      <button id="exportBtn" title="Export to calendar">Export (.ics)</button>
+    </div>
+    <div id="gridWrap">
+      <div id="grid"></div>
+      <div class="current-time-line" id="nowLine"></div>
+    </div>
+  </section>
+
+  <div id="trash" aria-label="Delete">🗑</div>
+  <div id="toast">Deleted. <button id="undoBtn">Undo</button></div>
+
+  <script>
+  (function(){
+    // -------- Utilities --------
+    const SLOT_H = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--slot-h')) || 36;
+    const pad = n => n.toString().padStart(2,'0');
+    const hm12 = hm => { let h = parseInt(hm.slice(0,2),10), m = hm.slice(2); const ap = h<12?'AM':'PM'; h = h%12||12; return `${h}:${m} ${ap}`; };
+    const addM = (hm, mins) => { const t = parseInt(hm.slice(0,2),10)*60 + parseInt(hm.slice(2),10) + mins; const d=((t%1440)+1440)%1440; return pad(Math.floor(d/60)%24) + pad(d%60); };
+    const minutes = hm => parseInt(hm.slice(0,2),10)*60 + parseInt(hm.slice(2),10);
+    const fmtLocal = d => {
+      const y = d.getFullYear(), mo = pad(d.getMonth()+1), da = pad(d.getDate());
+      const hh = pad(d.getHours()), mm = pad(d.getMinutes()), ss = pad(d.getSeconds());
+      return `${y}${mo}${da}T${hh}${mm}${ss}`; // local time
+    };
+
+    const grid = document.getElementById('grid');
+    const gridWrap = document.getElementById('gridWrap');
+    const nowLine = document.getElementById('nowLine');
+    const datePicker = document.getElementById('datePicker');
+    const exportBtn = document.getElementById('exportBtn');
+    const toast = document.getElementById('toast');
+    const undoBtn = document.getElementById('undoBtn');
+    const trash = document.getElementById('trash');
+
+    let isResizing = false; const LONG_PRESS_MS = 250;
+    let draggingNative = null;     // for desktop HTML5 DnD
+    let draggingCustom = null;     // for mobile pointer DnD (existing pill)
+    let draggingFromPalette = null;
+    let dragGhost = null;
+    let dragActive = false;
+    let undoStack = [];
+
+    // -------- Build Grid (ALWAYS) --------
+    (function buildGrid(){
+      for(let h=0; h<24; h++){
+        const lbl = document.createElement('div'); 
+        lbl.className='hour-label'; 
+        lbl.textContent=`${(h%12||12)} ${h<12?'AM':'PM'}`;
+        grid.appendChild(lbl);
+
+        const col = document.createElement('div'); 
+        grid.appendChild(col);
+
+        for(let q=0; q<4; q++){
+          const slot = document.createElement('div'); 
+          slot.className='slot'; 
+          slot.dataset.hm = pad(h)+pad(q*15);
+          col.appendChild(slot);
+        }
+      }
+    })();
+
+    // -------- Date --------
+    const todayISO = new Date().toISOString().split('T')[0];
+    datePicker.value = todayISO; datePicker.min = todayISO;
+    let selectedDate = new Date();
+    datePicker.addEventListener('change', e => { selectedDate = new Date(e.target.value + 'T00:00'); saveSchedule(); loadSchedule(); });
+
+    // -------- Pill Factory --------
+    function makePill(txt,color){
+      const p = document.createElement('div'); 
+      p.className='pill'; 
+      p.style.background=color; 
+      p.dataset.action=txt; 
+      p.dataset.duration=1;
+      p.innerHTML = '<span class="lbl"></span><div class="handle" title="Resize"></div>';
+      addDragDesktop(p);
+      addResize(p); 
+      addPillPointer(p);
+      return p;
+    }
+
+    function refreshLabel(p,slot){ 
+      if(!slot) return; 
+      const dur = parseInt(p.dataset.duration)||1; 
+      const sHM = slot.dataset.hm; 
+      const eHM = addM(sHM, dur*15); 
+      p.querySelector('.lbl').textContent = `${hm12(sHM)} – ${hm12(eHM)} • ${p.dataset.action}`; 
+      debouncedSave();
+    }
+
+    // -------- Desktop DnD (kept simple/reliable) --------
+    function addDragDesktop(p){ p.draggable = true;
+      p.addEventListener('dragstart',()=> draggingNative=p);
+      p.addEventListener('dragend',()=> draggingNative=null);
+    }
+    document.addEventListener('dragover', e => {
+      e.preventDefault(); document.querySelectorAll('.slot.target').forEach(s=>s.classList.remove('target'));
+      const s = getSlotByPoint(e.clientX, e.clientY); if(s) s.classList.add('target');
+    });
+    document.addEventListener('drop', e => {
+      const s = getSlotByPoint(e.clientX, e.clientY); if(!s) return;
+      s.classList.remove('target');
+      if(draggingNative){ draggingNative.classList.add('scheduled'); s.appendChild(draggingNative); refreshLabel(draggingNative, s); draggingNative=null; }
+    });
+
+    // -------- Mobile/Pointer DnD --------
+    function addPillPointer(p){
+      let lpTimer=null, startX=0, startY=0, moved=false;
+      p.addEventListener('pointerdown', e => {
+        if(isResizing) return;
+        const handle = e.target.closest('.handle'); if(handle) return; // resize path
+        startX = e.clientX; startY = e.clientY; moved=false;
+        lpTimer = setTimeout(()=>{ draggingCustom = p; startPointerDrag(e, p.dataset.action, getComputedStyle(p).backgroundColor); }, LONG_PRESS_MS);
+      }, {passive:true});
+      p.addEventListener('pointermove', e => {
+        if(!lpTimer) return;
+        if(Math.hypot(e.clientX-startX, e.clientY-startY) > 6){ // user is scrolling
+          clearTimeout(lpTimer); lpTimer=null;
+        }
+      }, {passive:true});
+      p.addEventListener('pointerup', ()=>{ if(lpTimer){ clearTimeout(lpTimer); lpTimer=null; } }, {passive:true});
+      p.addEventListener('pointercancel', ()=>{ if(lpTimer){ clearTimeout(lpTimer); lpTimer=null; } }, {passive:true});
+    }
+
+    document.querySelectorAll('#todo .card').forEach(card => {
+      // Native desktop drag for palette:
+      card.draggable = true;
+      card.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('label', card.innerText);
+        e.dataTransfer.setData('color', getComputedStyle(card).backgroundColor);
+      });
+      // Pointer-based for mobile:
+      card.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        draggingFromPalette = {label: card.innerText, color: getComputedStyle(card).backgroundColor};
+        startPointerDrag(e, card.innerText, getComputedStyle(card).backgroundColor);
+      }, {passive:false});
+    });
+
+    function startPointerDrag(e, text, bg){
+      dragActive = true;
+      dragGhost = makeGhost(text, bg);
+      setGhostPos(dragGhost, e.clientX, e.clientY);
+      document.addEventListener('pointermove', onPointerMove, {passive:false});
+      document.addEventListener('pointerup', onPointerUp, {passive:false});
+    }
+    function onPointerMove(e){
+      if(!dragActive) return;
+      setGhostPos(dragGhost, e.clientX, e.clientY);
+      document.querySelectorAll('.slot.target').forEach(s=>s.classList.remove('target'));
+      const s = getSlotByPoint(e.clientX, e.clientY); if(s) s.classList.add('target');
+      // trash hover
+      const r = trash.getBoundingClientRect();
+      const inTrash = e.clientX>=r.left && e.clientX<=r.right && e.clientY>=r.top && e.clientY<=r.bottom;
+      trash.classList.toggle('hover', inTrash);
+      // auto-scroll
+      const rect = gridWrap.getBoundingClientRect();
+      const margin = 50;
+      if(e.clientY < rect.top + margin) gridWrap.scrollTop -= 10;
+      else if(e.clientY > rect.bottom - margin) gridWrap.scrollTop += 10;
+    }
+    function onPointerUp(e){
+      document.removeEventListener('pointermove', onPointerMove, {passive:false});
+      document.removeEventListener('pointerup', onPointerUp, {passive:false});
+      const r = trash.getBoundingClientRect();
+      const inTrash = e.clientX>=r.left && e.clientX<=r.right && e.clientY>=r.top && e.clientY<=r.bottom;
+      const s = getSlotByPoint(e.clientX, e.clientY);
+      if(inTrash && draggingCustom){
+        const parent = draggingCustom.parentElement;
+        undoStack.push({node: draggingCustom, slot: parent});
+        parent.removeChild(draggingCustom);
+        showToast(); saveSchedule();
+      } else if(s){
+        if(draggingFromPalette){
+          const pill = makePill(draggingFromPalette.label, draggingFromPalette.color);
+          pill.classList.add('scheduled');
+          s.appendChild(pill); refreshLabel(pill, s);
+        } else if(draggingCustom){
+          draggingCustom.classList.add('scheduled');
+          s.appendChild(draggingCustom); refreshLabel(draggingCustom, s);
+        }
+      }
+      dragActive = false;
+      draggingFromPalette = null;
+      draggingCustom = null;
+      if(dragGhost){ dragGhost.remove(); dragGhost=null; }
+      trash.classList.remove('hover');
+      document.querySelectorAll('.slot.target').forEach(s=>s.classList.remove('target'));
+    }
+
+    function getSlotByPoint(x,y){
+      const el = document.elementFromPoint(x, y);
+      if(!el) return null;
+      if(el.classList && el.classList.contains('slot')) return el;
+      return el.closest && el.closest('.slot');
+    }
+
+    function makeGhost(text, bg){
+      const g = document.createElement('div');
+      g.className = 'drag-ghost';
+      g.style.background = bg;
+      g.textContent = text;
+      document.body.appendChild(g);
+      return g;
+    }
+    function setGhostPos(g, x, y){ g.style.left = x+'px'; g.style.top = y+'px'; }
+
+    // -------- Resizing --------
+    function addResize(p){
+      const hnd = p.querySelector('.handle'); let sy=0, sd=1;
+      hnd.addEventListener('pointerdown', e => {
+        e.stopPropagation(); e.preventDefault();
+        isResizing = true;
+        sy = e.clientY; sd = parseInt(p.dataset.duration)||1;
+        p.setPointerCapture(e.pointerId);
+        const mv = evt => {
+          const d = Math.max(1, sd + Math.round((evt.clientY - sy)/SLOT_H()));
+          p.dataset.duration = d;
+          p.style.height = `calc(var(--slot-h)*${d} - 4px)`;
+          refreshLabel(p, p.parentElement);
+        };
+        const up = evt => {
+          isResizing = false;
+          try{ p.releasePointerCapture(e.pointerId); }catch{}
+          document.removeEventListener('pointermove', mv, {passive:false});
+          document.removeEventListener('pointerup', up, {passive:false});
+        };
+        document.addEventListener('pointermove', mv, {passive:false});
+        document.addEventListener('pointerup', up, {passive:false});
+      });
+    }
+
+    // -------- Trash / Undo --------
+    function showToast(){ toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 5000); }
+    undoBtn.addEventListener('click', ()=>{
+      const last = undoStack.pop();
+      if(last){ last.slot.appendChild(last.node); refreshLabel(last.node, last.slot); saveSchedule(); }
+      toast.classList.remove('show');
+    });
+
+    // -------- Export --------
+    exportBtn.addEventListener('click', ()=>{
+      const events=[];
+      document.querySelectorAll('.slot').forEach(slot=>{
+        slot.querySelectorAll('.pill').forEach(p=>{
+          const dur = parseInt(p.dataset.duration)||1;
+          const sHM = slot.dataset.hm;
+          const startMin = minutes(sHM);
+          const endMin = startMin + dur*15;
+          const dtStart = new Date(datePicker.value + 'T00:00');
+          const dtEnd = new Date(datePicker.value + 'T00:00');
+          dtStart.setMinutes(startMin);
+          dtEnd.setMinutes(endMin);
+          events.push(
+            ['BEGIN:VEVENT',
+             'DTSTART:' + fmtLocal(dtStart),
+             'DTEND:' + fmtLocal(dtEnd),
+             'SUMMARY:' + p.dataset.action,
+             'END:VEVENT'].join('\\n')
+          );
+        });
+      });
+      if(!events.length){ alert('No events to export'); return; }
+      const ics=['BEGIN:VCALENDAR','VERSION:2.0','CALSCALE:GREGORIAN',...events,'END:VCALENDAR'].join('\\n');
+      const blob=new Blob([ics],{type:'text/calendar'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+      const fn = 'daily_schedule_' + datePicker.value + '.ics';
+      a.download = fn; a.click();
+    });
+
+    // -------- Save / Load --------
+    function saveSchedule(){
+      const key = 'plannerData:'+ datePicker.value;
+      const data = [];
+      document.querySelectorAll('.slot').forEach(slot => {
+        slot.querySelectorAll('.pill').forEach(p => {
+          data.push({
+            hm: slot.dataset.hm,
+            action: p.dataset.action,
+            duration: p.dataset.duration,
+            color: p.style.background
+          });
+        });
+      });
+      localStorage.setItem(key, JSON.stringify(data));
+    }
+    let saveTimer=null;
+    const debouncedSave = ()=>{ clearTimeout(saveTimer); saveTimer = setTimeout(saveSchedule, 120); };
+
+    function loadSchedule(){
+      const key = 'plannerData:'+ datePicker.value;
+      document.querySelectorAll('.pill').forEach(p=>p.remove());
+      const raw = localStorage.getItem(key);
+      if(raw){
+        try{
+          JSON.parse(raw).forEach(ev => {
+            const slot = document.querySelector(`.slot[data-hm="${ev.hm}"]`);
+            if(slot){
+              const pill = makePill(ev.action, ev.color);
+              pill.dataset.duration = ev.duration;
+              pill.style.height = `calc(var(--slot-h)*${ev.duration} - 4px)`;
+              pill.classList.add('scheduled');
+              slot.appendChild(pill);
+              refreshLabel(pill, slot);
+            }
+          });
+        }catch(e){ console.error(e); }
+      }
+    }
+
+    // -------- Current Time Line --------
+    function updateNowLine(){
+      const now = new Date();
+      const mins = now.getHours()*60 + now.getMinutes();
+      const pxPerMin = SLOT_H()/15;
+      nowLine.style.top = (mins * pxPerMin) + 'px';
+    }
+    setInterval(updateNowLine, 60000);
+    updateNowLine();
+
+    // Initial load
+    loadSchedule();
+  })();
+  </script>
+</body>
+</html>
