@@ -1,0 +1,469 @@
+import { CATEGORIES, SLOTS_PER_DAY } from './config.js';
+import { canPlace, clamp, eventTimeRange, formatSlot, makeEvent, maximumDuration } from './planner-model.js';
+import { loadDay, saveDay } from './storage.js';
+import { downloadCalendar } from './ics.js';
+
+const elements = {
+  palette: document.querySelector('#palette'),
+  palettePanel: document.querySelector('.palette-panel'),
+  timeline: document.querySelector('#timeline'),
+  timelineWrap: document.querySelector('#timeline-wrap'),
+  date: document.querySelector('#planner-date'),
+  friendlyDate: document.querySelector('#friendly-date'),
+  selectionHint: document.querySelector('#selection-hint'),
+  deleteButton: document.querySelector('#trash-button'),
+  exportButton: document.querySelector('#export-button'),
+  openPalette: document.querySelector('#open-palette'),
+  closePalette: document.querySelector('#close-palette'),
+  toast: document.querySelector('#toast'),
+  toastMessage: document.querySelector('#toast-message'),
+  undoButton: document.querySelector('#undo-button'),
+  live: document.querySelector('#live-region'),
+};
+
+let selectedDate = localDateString(new Date());
+let events = [];
+let selectedCategory = null;
+let selectedEventId = null;
+let undoRecord = null;
+let undoTimer = null;
+let pointerDrag = null;
+let resizeSession = null;
+let suppressClick = false;
+let nativeDragPayload = null;
+
+function localDateString(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function announce(message) {
+  elements.live.textContent = '';
+  requestAnimationFrame(() => { elements.live.textContent = message; });
+}
+
+function slotHeight() {
+  return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--slot-height')) || 44;
+}
+
+function saveAndRender(message = '') {
+  events.sort((a, b) => a.start - b.start);
+  if (!saveDay(selectedDate, events)) announce('The schedule changed, but this browser could not save it for later.');
+  renderEvents();
+  if (message) announce(message);
+}
+
+function eventById(id) {
+  return events.find((event) => event.id === id) || null;
+}
+
+function renderPalette() {
+  elements.palette.replaceChildren();
+  for (const category of CATEGORIES) {
+    const card = document.createElement('button');
+    card.className = 'action-card';
+    card.type = 'button';
+    card.textContent = category.name;
+    card.style.setProperty('--category-color', category.color);
+    card.style.setProperty('--category-text', category.text);
+    card.dataset.category = category.name;
+    card.draggable = false;
+    card.setAttribute('aria-pressed', String(selectedCategory?.name === category.name));
+    card.addEventListener('click', (event) => {
+      if (suppressClick) return;
+      event.preventDefault();
+      chooseCategory(category);
+    });
+    card.addEventListener('dragstart', (event) => {
+      nativeDragPayload = { type: 'category', category };
+      event.dataTransfer.effectAllowed = 'copy';
+      event.dataTransfer.setData('text/plain', category.name);
+    });
+    card.addEventListener('dragend', clearDropTarget);
+    card.addEventListener('pointerdown', (event) => beginPointerDrag(event, { type: 'category', category }, card));
+    elements.palette.append(card);
+  }
+}
+
+function renderTimeline() {
+  const fragment = document.createDocumentFragment();
+  for (let slot = 0; slot < SLOTS_PER_DAY; slot += 1) {
+    const row = document.createElement('div');
+    row.className = `slot${slot % 4 === 0 ? ' hour' : ''}`;
+    row.style.top = `calc(var(--slot-height) * ${slot})`;
+    row.dataset.slot = String(slot);
+    row.setAttribute('role', 'gridcell');
+    row.setAttribute('aria-label', formatSlot(slot));
+    fragment.append(row);
+    if (slot % 4 === 0) {
+      const label = document.createElement('div');
+      label.className = 'time-label';
+      label.style.top = `calc(var(--slot-height) * ${slot})`;
+      label.textContent = formatSlot(slot).replace(':00', '');
+      label.setAttribute('aria-hidden', 'true');
+      fragment.append(label);
+    }
+  }
+  elements.timeline.replaceChildren(fragment);
+}
+
+function renderEvents() {
+  elements.timeline.querySelectorAll('.scheduled-event').forEach((element) => element.remove());
+  for (const event of events) {
+    const item = document.createElement('div');
+    item.className = 'scheduled-event';
+    if (event.id === selectedEventId) item.classList.add('selected');
+    item.dataset.eventId = event.id;
+    item.draggable = false;
+    item.tabIndex = 0;
+    item.setAttribute('role', 'button');
+    item.setAttribute('aria-label', `${event.title}, ${eventTimeRange(event)}. Drag to move; use the resize bar to change duration.`);
+    item.style.setProperty('--event-color', event.color);
+    item.style.setProperty('--event-text', event.text);
+    item.style.top = `calc(var(--slot-height) * ${event.start})`;
+    item.style.height = `calc(var(--slot-height) * ${event.duration} - 3px)`;
+    item.innerHTML = '<span class="event-title"></span><span class="event-time"></span><span class="resize-handle" role="separator" aria-label="Resize event" tabindex="-1"><span></span></span>';
+    item.querySelector('.event-title').textContent = event.title;
+    item.querySelector('.event-time').textContent = eventTimeRange(event);
+    item.addEventListener('click', () => { if (!suppressClick) selectEvent(event.id); });
+    item.addEventListener('keydown', (keyboardEvent) => handleEventKeydown(keyboardEvent, event.id));
+    item.addEventListener('dragstart', (dragEvent) => {
+      if (resizeSession) { dragEvent.preventDefault(); return; }
+      selectedCategory = null;
+      selectedEventId = event.id;
+      updateSelectionUi();
+      nativeDragPayload = { type: 'event', eventId: event.id };
+      dragEvent.dataTransfer.effectAllowed = 'move';
+      dragEvent.dataTransfer.setData('text/plain', event.id);
+      item.classList.add('drag-source');
+    });
+    item.addEventListener('dragend', () => {
+      item.classList.remove('drag-source');
+      nativeDragPayload = null;
+      clearDropTarget();
+    });
+    item.addEventListener('pointerdown', (pointerEvent) => {
+      if (pointerEvent.target.closest('.resize-handle')) return;
+      beginPointerDrag(pointerEvent, { type: 'event', eventId: event.id }, item);
+    });
+    item.querySelector('.resize-handle').addEventListener('pointerdown', (pointerEvent) => startResize(pointerEvent, event.id, item));
+    elements.timeline.append(item);
+  }
+  updateSelectionUi();
+}
+
+function chooseCategory(category) {
+  selectedEventId = null;
+  selectedCategory = selectedCategory?.name === category.name ? null : category;
+  renderPalette();
+  renderEvents();
+  if (selectedCategory) {
+    elements.palettePanel.classList.remove('open');
+    announce(`${category.name} selected. Tap a time in the schedule.`);
+  }
+}
+
+function selectEvent(eventId) {
+  selectedCategory = null;
+  selectedEventId = selectedEventId === eventId ? null : eventId;
+  renderPalette();
+  renderEvents();
+  const selected = eventById(selectedEventId);
+  if (selected) announce(`${selected.title} selected.`);
+}
+
+function updateSelectionUi() {
+  const selected = eventById(selectedEventId);
+  elements.deleteButton.disabled = !selected;
+  elements.selectionHint.textContent = selected
+    ? `${selected.title} • ${eventTimeRange(selected)} — drag to move or pull the white bar to resize`
+    : selectedCategory
+      ? `${selectedCategory.name} selected — tap a time to place it`
+      : 'Nothing selected — choose an action or tap an event';
+}
+
+function addCategoryAt(category, start) {
+  const candidate = makeEvent(category, start);
+  if (!canPlace(events, candidate)) {
+    announce(`That time is occupied. ${category.name} was not added.`);
+    return false;
+  }
+  events.push(candidate);
+  selectedCategory = null;
+  selectedEventId = candidate.id;
+  renderPalette();
+  saveAndRender(`${category.name} added at ${formatSlot(start)}.`);
+  return true;
+}
+
+function moveEventTo(eventId, start) {
+  const event = eventById(eventId);
+  if (!event) return false;
+  const candidate = { ...event, start };
+  if (!canPlace(events, candidate, eventId)) {
+    announce('That event will not fit there. Nothing was moved.');
+    return false;
+  }
+  event.start = start;
+  selectedEventId = event.id;
+  saveAndRender(`${event.title} moved to ${formatSlot(start)}.`);
+  return true;
+}
+
+function slotFromPoint(clientX, clientY) {
+  const target = document.elementFromPoint(clientX, clientY);
+  const slot = target?.closest?.('.slot');
+  return slot && elements.timeline.contains(slot) ? Number(slot.dataset.slot) : null;
+}
+
+function setDropTarget(slot) {
+  clearDropTarget();
+  if (slot == null) return;
+  const element = elements.timeline.querySelector(`.slot[data-slot="${slot}"]`);
+  if (element) element.classList.add('drop-target');
+}
+
+function clearDropTarget() {
+  elements.timeline.querySelector('.slot.drop-target')?.classList.remove('drop-target');
+}
+
+function completeDrop(payload, slot) {
+  if (slot == null) return false;
+  return payload.type === 'category' ? addCategoryAt(payload.category, slot) : moveEventTo(payload.eventId, slot);
+}
+
+function beginPointerDrag(event, payload, source) {
+  if (event.button !== 0 || resizeSession) return;
+  pointerDrag = { pointerId: event.pointerId, payload, source, startX: event.clientX, startY: event.clientY, started: false, ghost: null };
+  source.setPointerCapture?.(event.pointerId);
+  source.addEventListener('pointermove', movePointerDrag);
+  source.addEventListener('pointerup', endPointerDrag, { once: true });
+  source.addEventListener('pointercancel', cancelPointerDrag, { once: true });
+}
+
+function movePointerDrag(event) {
+  if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
+  const distance = Math.hypot(event.clientX - pointerDrag.startX, event.clientY - pointerDrag.startY);
+  if (!pointerDrag.started && distance < 7) return;
+  event.preventDefault();
+  if (!pointerDrag.started) {
+    pointerDrag.started = true;
+    suppressClick = true;
+    pointerDrag.ghost = pointerDrag.source.cloneNode(true);
+    pointerDrag.ghost.classList.add('drag-ghost');
+    pointerDrag.ghost.removeAttribute('tabindex');
+    document.body.append(pointerDrag.ghost);
+    pointerDrag.source.classList.add('drag-source');
+    document.body.classList.add('is-dragging');
+  }
+  pointerDrag.ghost.style.transform = `translate3d(${event.clientX + 12}px, ${event.clientY + 12}px, 0)`;
+  setDropTarget(slotFromPoint(event.clientX, event.clientY));
+  const bounds = elements.timelineWrap.getBoundingClientRect();
+  if (event.clientY < bounds.top + 60) elements.timelineWrap.scrollBy(0, -22);
+  if (event.clientY > bounds.bottom - 60) elements.timelineWrap.scrollBy(0, 22);
+  elements.deleteButton.classList.toggle('drop-target', document.elementFromPoint(event.clientX, event.clientY)?.closest('#trash-button') != null);
+}
+
+function finishPointerDrag(event, cancelled) {
+  if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
+  const current = pointerDrag;
+  current.source.removeEventListener('pointermove', movePointerDrag);
+  current.source.classList.remove('drag-source');
+  current.ghost?.remove();
+  document.body.classList.remove('is-dragging');
+  const overTrash = !cancelled && document.elementFromPoint(event.clientX, event.clientY)?.closest('#trash-button');
+  if (current.started && overTrash && current.payload.type === 'event') deleteEvent(current.payload.eventId);
+  else if (current.started && !cancelled) completeDrop(current.payload, slotFromPoint(event.clientX, event.clientY));
+  clearDropTarget();
+  elements.deleteButton.classList.remove('drop-target');
+  pointerDrag = null;
+  setTimeout(() => { suppressClick = false; }, 0);
+}
+
+function endPointerDrag(event) { finishPointerDrag(event, false); }
+function cancelPointerDrag(event) { finishPointerDrag(event, true); }
+
+function startResize(pointerEvent, eventId, item) {
+  if (pointerEvent.button !== 0) return;
+  pointerEvent.preventDefault();
+  pointerEvent.stopPropagation();
+  const event = eventById(eventId);
+  if (!event) return;
+  const handle = pointerEvent.currentTarget;
+  handle.setPointerCapture?.(pointerEvent.pointerId);
+  resizeSession = { pointerId: pointerEvent.pointerId, event, item, handle, startY: pointerEvent.clientY, originalDuration: event.duration, draftDuration: event.duration };
+  item.classList.add('resizing');
+  handle.addEventListener('pointermove', moveResize);
+  handle.addEventListener('pointerup', endResize, { once: true });
+  handle.addEventListener('pointercancel', cancelResize, { once: true });
+}
+
+function moveResize(pointerEvent) {
+  if (!resizeSession || pointerEvent.pointerId !== resizeSession.pointerId) return;
+  pointerEvent.preventDefault();
+  const delta = Math.round((pointerEvent.clientY - resizeSession.startY) / slotHeight());
+  const duration = clamp(resizeSession.originalDuration + delta, 1, maximumDuration(events, resizeSession.event));
+  resizeSession.draftDuration = duration;
+  resizeSession.item.style.height = `calc(var(--slot-height) * ${duration} - 3px)`;
+  resizeSession.item.querySelector('.event-time').textContent = eventTimeRange({ ...resizeSession.event, duration });
+}
+
+function finishResize(pointerEvent, cancelled) {
+  if (!resizeSession || pointerEvent.pointerId !== resizeSession.pointerId) return;
+  const session = resizeSession;
+  session.handle.removeEventListener('pointermove', moveResize);
+  session.item.classList.remove('resizing');
+  session.item.draggable = false;
+  session.event.duration = cancelled ? session.originalDuration : session.draftDuration;
+  resizeSession = null;
+  saveAndRender(`${session.event.title} now ends at ${eventTimeRange(session.event).split(' – ')[1]}.`);
+}
+
+function endResize(event) { finishResize(event, false); }
+function cancelResize(event) { finishResize(event, true); }
+
+function deleteEvent(eventId) {
+  const index = events.findIndex((event) => event.id === eventId);
+  if (index < 0) return;
+  const [event] = events.splice(index, 1);
+  undoRecord = { date: selectedDate, event, index };
+  selectedEventId = null;
+  saveAndRender(`${event.title} deleted.`);
+  showUndo(`${event.title} deleted.`);
+}
+
+function showUndo(message) {
+  clearTimeout(undoTimer);
+  elements.toastMessage.textContent = message;
+  elements.toast.hidden = false;
+  undoTimer = setTimeout(() => { elements.toast.hidden = true; undoRecord = null; }, 7000);
+}
+
+function undoDelete() {
+  if (!undoRecord) return;
+  if (undoRecord.date !== selectedDate || !canPlace(events, undoRecord.event)) {
+    announce('Undo is no longer available because that time is occupied or the date changed.');
+    elements.toast.hidden = true;
+    undoRecord = null;
+    return;
+  }
+  events.splice(Math.min(undoRecord.index, events.length), 0, undoRecord.event);
+  selectedEventId = undoRecord.event.id;
+  const restoredTitle = undoRecord.event.title;
+  undoRecord = null;
+  clearTimeout(undoTimer);
+  elements.toast.hidden = true;
+  saveAndRender(`${restoredTitle} restored.`);
+}
+
+function handleEventKeydown(keyboardEvent, eventId) {
+  const event = eventById(eventId);
+  if (!event) return;
+  if (keyboardEvent.key === 'Delete' || keyboardEvent.key === 'Backspace') {
+    keyboardEvent.preventDefault();
+    deleteEvent(eventId);
+  } else if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
+    keyboardEvent.preventDefault();
+    selectEvent(eventId);
+  } else if (keyboardEvent.key === 'ArrowUp' || keyboardEvent.key === 'ArrowDown') {
+    keyboardEvent.preventDefault();
+    const direction = keyboardEvent.key === 'ArrowUp' ? -1 : 1;
+    if (keyboardEvent.shiftKey) {
+      event.duration = clamp(event.duration + direction, 1, maximumDuration(events, event));
+      saveAndRender(`${event.title} resized to ${eventTimeRange(event)}.`);
+    } else moveEventTo(event.id, event.start + direction);
+  }
+}
+
+function updateDateHeading() {
+  const [year, month, day] = selectedDate.split('-').map(Number);
+  const chosen = new Date(year, month - 1, day);
+  const today = localDateString(new Date());
+  elements.friendlyDate.textContent = selectedDate === today ? 'Today' : new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'short', day: 'numeric' }).format(chosen);
+}
+
+function changeDate() {
+  const today = localDateString(new Date());
+  if (!elements.date.value || elements.date.value < today) elements.date.value = today;
+  selectedDate = elements.date.value;
+  events = loadDay(selectedDate);
+  selectedCategory = null;
+  selectedEventId = null;
+  elements.toast.hidden = true;
+  undoRecord = null;
+  updateDateHeading();
+  renderPalette();
+  renderEvents();
+  elements.timelineWrap.scrollTop = Math.max(0, (new Date().getHours() - 1) * 4 * slotHeight());
+}
+
+function exportDay() {
+  if (!events.length) {
+    announce('Add at least one event before exporting.');
+    elements.selectionHint.textContent = 'Add at least one event before exporting.';
+    return;
+  }
+  downloadCalendar(selectedDate, events);
+  announce(`${events.length} event${events.length === 1 ? '' : 's'} exported.`);
+}
+
+elements.timeline.addEventListener('click', (clickEvent) => {
+  if (suppressClick || clickEvent.target.closest('.scheduled-event')) return;
+  const slot = clickEvent.target.closest('.slot');
+  if (slot && selectedCategory) addCategoryAt(selectedCategory, Number(slot.dataset.slot));
+});
+elements.timeline.addEventListener('dragover', (event) => {
+  if (!nativeDragPayload) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = nativeDragPayload.type === 'category' ? 'copy' : 'move';
+  setDropTarget(slotFromPoint(event.clientX, event.clientY));
+});
+elements.timeline.addEventListener('dragleave', (event) => { if (!elements.timeline.contains(event.relatedTarget)) clearDropTarget(); });
+elements.timeline.addEventListener('drop', (event) => {
+  event.preventDefault();
+  if (nativeDragPayload) completeDrop(nativeDragPayload, slotFromPoint(event.clientX, event.clientY));
+  nativeDragPayload = null;
+  clearDropTarget();
+});
+elements.deleteButton.addEventListener('click', () => { if (selectedEventId) deleteEvent(selectedEventId); });
+elements.deleteButton.addEventListener('dragover', (event) => {
+  if (nativeDragPayload?.type !== 'event') return;
+  event.preventDefault();
+  elements.deleteButton.classList.add('drop-target');
+});
+elements.deleteButton.addEventListener('dragleave', () => elements.deleteButton.classList.remove('drop-target'));
+elements.deleteButton.addEventListener('drop', (event) => {
+  event.preventDefault();
+  elements.deleteButton.classList.remove('drop-target');
+  if (nativeDragPayload?.type === 'event') deleteEvent(nativeDragPayload.eventId);
+  nativeDragPayload = null;
+});
+elements.undoButton.addEventListener('click', undoDelete);
+elements.exportButton.addEventListener('click', exportDay);
+elements.date.addEventListener('change', changeDate);
+elements.openPalette.addEventListener('click', () => elements.palettePanel.classList.add('open'));
+elements.closePalette.addEventListener('click', () => elements.palettePanel.classList.remove('open'));
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    elements.palettePanel.classList.remove('open');
+    selectedCategory = null;
+    selectedEventId = null;
+    renderPalette();
+    renderEvents();
+  }
+});
+
+function initialize() {
+  const today = localDateString(new Date());
+  elements.date.min = today;
+  elements.date.value = today;
+  selectedDate = today;
+  events = loadDay(selectedDate);
+  renderPalette();
+  renderTimeline();
+  renderEvents();
+  updateDateHeading();
+  requestAnimationFrame(() => { elements.timelineWrap.scrollTop = Math.max(0, (new Date().getHours() - 1) * 4 * slotHeight()); });
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+}
+
+initialize();

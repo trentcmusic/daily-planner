@@ -1,467 +1,73 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Daily Planner – Mobile First</title>
-  <style>
-    :root { --slot-h: 36px; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #f7f9ff; height: 100vh; display: flex; overflow: hidden; }
-    @media (max-width: 599px) { body { flex-direction: column; } }
-    @media (min-width: 600px) { body { flex-direction: row; } }
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#5b57bd">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Day Planner">
+    <meta name="description" content="A calm, flexible daily planner with 15-minute scheduling.">
+    <link rel="manifest" href="./manifest.json">
+    <link rel="apple-touch-icon" href="./icons/icon-192.png">
+    <link rel="stylesheet" href="./styles.css">
+    <title>Daily Planner</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#schedule">Skip to schedule</a>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">One day at a time</p>
+          <h1>Daily Planner</h1>
+        </div>
+        <div class="topbar-actions">
+          <label class="date-control" for="planner-date">
+            <span>Plan for</span>
+            <input id="planner-date" name="planner-date" type="date" aria-describedby="date-help">
+          </label>
+          <span id="date-help" class="sr-only">Past dates are unavailable.</span>
+          <button class="button button-primary" id="export-button" type="button">Export .ics</button>
+        </div>
+      </header>
 
-    .column { flex: 1 1 0; overflow: auto; padding: .75rem; }
-    .holographic-background { background: linear-gradient(135deg,#d5d5d8 0%,#f3e7ff 25%,#e7faff 50%,#d5d5d8 75%,#f3e7ff 100%); }
+      <main class="planner-layout">
+        <aside class="palette-panel" aria-labelledby="actions-title">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Choose a next step</p>
+              <h2 id="actions-title">Actions</h2>
+            </div>
+            <button class="icon-button mobile-only" id="close-palette" type="button" aria-label="Close actions">×</button>
+          </div>
+          <p class="helper">Drag an action onto the day, or tap it and then tap a time.</p>
+          <div class="palette" id="palette"></div>
+        </aside>
 
-    /* Actions column – smaller chips */
-    #todo { max-width: 260px; border-right: 2px solid #dee2e6; }
-    @media (max-width: 599px) { #todo { max-width: 100%; border-bottom: 2px solid #dee2e6; } }
-    h2 { font-size: 0.95rem; margin-bottom: .4rem; color: #333; }
-    .card {
-      padding: .38rem .5rem;
-      margin: .28rem 0;
-      border-radius: 10px;
-      color: #fff;
-      font-weight: 700;
-      font-size: .95rem;
-      line-height: 1.1;
-      user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
-      touch-action: none; cursor: grab;
-    }
-    .journaling{background:#ff9f43}.prayer{background:#5758BB}.gaming{background:#1B9CFC}.nap{background:#FDA7DF}.medicine{background:#e15f41}.handiwork{background:#2ecc71}.freetime{background:#3dc1d3}.dropoff{background:#34ace0}.therapy{background:#574b90}.bed{background:#2f3542}.appointment{background:#b33771}.chores{background:#9b59b6}
-    .work{background:#ff6f61}.phone{background:#16a085}.email{background:#2980b9}.exercise{background:#e67e22}.commute{background:#7f8c8d}.meeting{background:#8e44ad}.mealprep{background:#2ecc71}.groceries{background:#27ae60}.errands{background:#d35400}.focus{background:#34495e}.break{background:#95a5a6}.reading{background:#9b59b6}.family{background:#c0392b}
-
-    #schedule { background: #eef3ff; display: flex; flex-direction: column; }
-    #headerRow { display: flex; align-items: center; gap: .5rem; padding-right: .25rem; }
-    #datePicker { padding: .35rem .5rem; border: 1px solid #cbd3ff; border-radius: 8px; font: inherit; background: #fff; }
-    #exportBtn { margin-left: auto; padding: .45rem .8rem; border: none; border-radius: 10px; background: #4c6fff; color: #fff; font-weight: 700; cursor: pointer; }
-    #exportBtn:hover { background: #355eff; }
-
-    #gridWrap { position: relative; flex: 1 1 auto; overflow: auto; border: 1px solid #cbd3ff; border-radius: 12px; background: #f4f7ff; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-    #grid { position: relative; display: grid; grid-template-columns: 70px 1fr; }
-    .hour-label { height: calc(var(--slot-h)*4); line-height: calc(var(--slot-h)*4); text-align: right; padding-right: .4rem; font-size: .9rem; font-weight: bold; color: #333; border-bottom: 1px solid #d0d6ff; background: #edf1ff; }
-    .slot { height: var(--slot-h); border-bottom: 1px dashed #c6cff7; position: relative; touch-action: pan-y; }
-    .slot:nth-child(4n) { border-bottom: 1px solid #aabaff; }
-    .slot.target { background: #e7fbef; }
-
-    /* Pills: full width in the slot */
-    .pill {
-      position: absolute; top: 2px; left: 2px; right: 2px;
-      height: calc(var(--slot-h) - 4px);
-      display: flex; align-items: center; justify-content: center;
-      border-radius: 10px; font-size: .78rem; color: #fff;
-      user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
-      touch-action: pan-y; cursor: default;
-    }
-    .pill.scheduled { left: 2px; right: 2px; }
-
-    /* Move grip (left) – visible, but label also draggable */
-    .move-handle {
-      position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
-      width: 16px; height: 16px; border-radius: 4px;
-      cursor: grab; touch-action: none; opacity: .95;
-      background-image:
-        radial-gradient(currentColor 1px, transparent 1px),
-        radial-gradient(currentColor 1px, transparent 1px),
-        radial-gradient(currentColor 1px, transparent 1px),
-        radial-gradient(currentColor 1px, transparent 1px);
-      background-size: 6px 6px, 6px 6px, 6px 6px, 6px 6px;
-      background-position: 0 0, 3px 3px, 0 3px, 3px 0;
-      color: rgba(255,255,255,.9);
-      mix-blend-mode: overlay;
-    }
-
-    /* Resize bar (bottom) */
-    .handle { position: absolute; bottom: 0; left: 0; right: 0; height: 12px; background: rgba(255,255,255,.65); border-bottom-left-radius: 10px; border-bottom-right-radius: 10px; cursor: ns-resize; }
-
-    .pill .lbl { padding: 0 .6rem 0 28px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: grab; }
-
-    .current-time-line { position: absolute; left: 70px; right: 0; height: 2px; background: #ff3b3b; z-index: 1; pointer-events: none; }
-
-    #trash { position: fixed; right: 18px; bottom: 18px; width: 60px; height: 60px; border-radius: 50%; background: #ff6b6b; display: flex; align-items: center; justify-content: center; font-size: 26px; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); z-index: 1000; transition: background .2s; }
-    #trash.hover { background: #ff3b3b; }
-
-    #toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 16px; border-radius: 20px; opacity: 0; pointer-events: none; transition: opacity .3s; font-size: .86rem; z-index: 1001; display: flex; gap: .75rem; align-items: center; }
-    #toast.show { opacity: 1; pointer-events: auto; }
-    #toast button { background: none; border: none; color: #a2c4ff; font-weight: 700; cursor: pointer; }
-
-    .drag-ghost { position: fixed; z-index: 2000; pointer-events: none; opacity: .95; transform: translate(-50%, -50%); border-radius: 8px; padding: .3rem .5rem; color: #fff; font-weight: 800; font-size: .8rem; white-space: nowrap; }
-  </style>
-</head>
-<body>
-  <aside id="todo" class="column holographic-background">
-    <h2>Actions</h2>
-    <div class="card journaling">Journaling</div>
-    <div class="card prayer">Prayer & Bible</div>
-    <div class="card gaming">Gaming</div>
-    <div class="card nap">Nap</div>
-    <div class="card medicine">Take Medicine</div>
-    <div class="card handiwork">Handiwork</div>
-    <div class="card freetime">Free time</div>
-    <div class="card dropoff">Dropoff/Pickup</div>
-    <div class="card therapy">Therapy</div>
-    <div class="card bed">Get ready for bed</div>
-    <div class="card appointment">Appointment</div>
-    <div class="card chores">Chores</div>
-    <div class="card work">Work</div>
-    <div class="card phone">Phone Call</div>
-    <div class="card email">Email</div>
-    <div class="card exercise">Exercise</div>
-    <div class="card commute">Commute</div>
-    <div class="card meeting">Meeting</div>
-    <div class="card mealprep">Meal Prep</div>
-    <div class="card groceries">Groceries</div>
-    <div class="card errands">Errands</div>
-    <div class="card focus">Focus Block</div>
-    <div class="card break">Break</div>
-    <div class="card reading">Reading</div>
-    <div class="card family">Family Time</div>
-  </aside>
-
-  <section id="schedule" class="column">
-    <div id="headerRow">
-      <input type="date" id="datePicker" aria-label="Select date"/>
-      <button id="exportBtn" title="Export to calendar">Export (.ics)</button>
+        <section class="schedule-panel" id="schedule" aria-labelledby="schedule-title">
+          <div class="schedule-toolbar">
+            <div>
+              <p class="eyebrow" id="friendly-date">Today</p>
+              <h2 id="schedule-title">Your day</h2>
+            </div>
+            <div class="schedule-actions">
+              <button class="button mobile-only" id="open-palette" type="button">＋ Add action</button>
+              <button class="button button-danger" id="trash-button" type="button" aria-label="Delete selected event" disabled>Delete</button>
+            </div>
+          </div>
+          <div class="selection-hint" id="selection-hint" role="status" aria-live="polite">Nothing selected</div>
+          <div class="timeline-wrap" id="timeline-wrap">
+            <div class="timeline" id="timeline" role="grid" aria-label="24-hour schedule in 15-minute increments"></div>
+          </div>
+        </section>
+      </main>
     </div>
-    <div id="gridWrap">
-      <div id="grid"></div>
-      <div class="current-time-line" id="nowLine"></div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+      <span id="toast-message">Event deleted.</span>
+      <button id="undo-button" type="button">Undo</button>
     </div>
-  </section>
-
-  <div id="trash" aria-label="Delete">🗑</div>
-  <div id="toast">Deleted. <button id="undoBtn">Undo</button></div>
-
-  <script>
-  (function(){
-    // ---- Helpers ----
-    const SLOT_H = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--slot-h')) || 36;
-    const pad = n => n.toString().padStart(2,'0');
-    const hm12 = hm => { let h = parseInt(hm.slice(0,2),10), m = hm.slice(2); const ap = h<12?'AM':'PM'; h = h%12||12; return `${h}:${m} ${ap}`; };
-    const addM = (hm, mins) => { const t = parseInt(hm.slice(0,2),10)*60 + parseInt(hm.slice(2),10) + mins; const d=((t%1440)+1440)%1440; return pad(Math.floor(d/60)%24) + pad(d%60); };
-    const minutes = hm => parseInt(hm.slice(0,2),10)*60 + parseInt(hm.slice(2),10);
-    const fmtLocal = d => `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-
-    const grid = document.getElementById('grid');
-    const gridWrap = document.getElementById('gridWrap');
-    const nowLine = document.getElementById('nowLine');
-    const datePicker = document.getElementById('datePicker');
-    const exportBtn = document.getElementById('exportBtn');
-    const toast = document.getElementById('toast');
-    const undoBtn = document.getElementById('undoBtn');
-    const trash = document.getElementById('trash');
-
-    // Hard-block iOS text callouts during interactions
-    ['contextmenu','selectstart','gesturestart'].forEach(evt=>{
-      gridWrap.addEventListener(evt, e=>{
-        if(e.target.closest('.pill') || e.target.closest('.slot')) e.preventDefault();
-      }, {passive:false});
-    });
-
-    // Build grid
-    (function(){
-      for(let h=0; h<24; h++){
-        const lbl = document.createElement('div');
-        lbl.className='hour-label';
-        lbl.textContent=`${(h%12||12)} ${h<12?'AM':'PM'}`;
-        grid.appendChild(lbl);
-
-        const col = document.createElement('div');
-        grid.appendChild(col);
-
-        for(let q=0; q<4; q++){
-          const slot = document.createElement('div');
-          slot.className='slot';
-          slot.dataset.hm = pad(h)+pad(q*15);
-          col.appendChild(slot);
-        }
-      }
-    })();
-
-    // Date
-    const todayISO = new Date().toISOString().split('T')[0];
-    datePicker.value = todayISO; datePicker.min = todayISO;
-    datePicker.addEventListener('change', clearAndForget);
-
-    // Pill factory
-    function makePill(txt,color){
-      const p = document.createElement('div');
-      p.className='pill';
-      p.style.background=color;
-      p.dataset.action=txt;
-      p.dataset.duration=1; // default for new item
-      p.innerHTML = '<span class="lbl"></span><div class="move-handle" title="Drag"></div><div class="handle" title="Resize"></div>';
-      addDesktopDrag(p);        // from grip or label
-      addResize(p);             // from bottom bar
-      addPointerDrag(p);        // long-press from grip or label
-      return p;
-    }
-    function refreshLabel(p,slot){
-      if(!slot) return;
-      const dur = parseInt(p.dataset.duration)||1;
-      const sHM = slot.dataset.hm;
-      const eHM = addM(sHM, dur*15);
-      p.querySelector('.lbl').textContent = `${hm12(sHM)} – ${hm12(eHM)} • ${p.dataset.action}`;
-    }
-
-    // Desktop drag: only from grip OR label (not from resize bar/body)
-    let draggingNative = null;
-    function addDesktopDrag(p){
-      const grip = p.querySelector('.move-handle');
-      const label = p.querySelector('.lbl');
-      p.draggable = false;
-      [grip, label].forEach(el=>{
-        el.draggable = true;
-        el.addEventListener('dragstart',()=> draggingNative=p);
-        el.addEventListener('dragend',()=> draggingNative=null);
-      });
-    }
-    document.addEventListener('dragover', e => {
-      e.preventDefault(); document.querySelectorAll('.slot.target').forEach(s=>s.classList.remove('target'));
-      const s = slotFromPoint(e.clientX, e.clientY); if(s) s.classList.add('target');
-    });
-    document.addEventListener('drop', e => {
-      const s = slotFromPoint(e.clientX, e.clientY); if(!s) return;
-      s.classList.remove('target');
-      if(draggingNative){ draggingNative.classList.add('scheduled'); s.appendChild(draggingNative); refreshLabel(draggingNative, s); draggingNative=null; }
-    });
-
-    // Pointer drag (mobile): long-press on grip OR label
-    let isResizing = false;
-    let draggingCustom = null, draggingFromPalette = null, dragGhost = null, dragActive = false;
-    const LONG_PRESS_MS = 250, MOVE_THRESH = 6;
-
-    function addPointerDrag(p){
-      const grip = p.querySelector('.move-handle');
-      const label = p.querySelector('.lbl');
-      [grip, label].forEach(starter=>{
-        let timer=null, sx=0, sy=0;
-        starter.addEventListener('pointerdown', e => {
-          if(isResizing) return;
-          e.preventDefault();
-          sx = e.clientX; sy = e.clientY;
-          timer = setTimeout(()=>{ draggingCustom = p; beginPointerDrag(e, p.dataset.action, getComputedStyle(p).backgroundColor); }, LONG_PRESS_MS);
-        }, {passive:false});
-        starter.addEventListener('pointermove', e => {
-          if(!timer) return;
-          if(Math.hypot(e.clientX-sx, e.clientY-sy) > MOVE_THRESH){
-            clearTimeout(timer); timer=null;
-            draggingCustom = p; beginPointerDrag(e, p.dataset.action, getComputedStyle(p).backgroundColor);
-          }
-        }, {passive:false});
-        const cancel = ()=>{ if(timer){ clearTimeout(timer); timer=null; } };
-        starter.addEventListener('pointerup', cancel, {passive:true});
-        starter.addEventListener('pointercancel', cancel, {passive:true});
-      });
-    }
-
-    // Palette (drag from anywhere on the card)
-    document.querySelectorAll('#todo .card').forEach(card => {
-      // desktop
-      card.draggable = true;
-      card.addEventListener('dragstart', e => {
-        e.dataTransfer.setData('label', card.innerText);
-        e.dataTransfer.setData('color', getComputedStyle(card).backgroundColor);
-      });
-      // mobile
-      card.addEventListener('pointerdown', e => {
-        e.preventDefault();
-        draggingFromPalette = {label: card.innerText, color: getComputedStyle(card).backgroundColor};
-        beginPointerDrag(e, card.innerText, getComputedStyle(card).backgroundColor);
-      }, {passive:false});
-    });
-
-    // Pointer-drag engine
-    function beginPointerDrag(e, text, bg){
-      dragActive = true;
-      dragGhost = makeGhost(text, bg);
-      setGhostPos(dragGhost, e.clientX, e.clientY);
-      document.addEventListener('pointermove', onPointerMove, {passive:false});
-      document.addEventListener('pointerup', onPointerUp, {passive:false});
-    }
-    function onPointerMove(e){
-      if(!dragActive) return;
-      setGhostPos(dragGhost, e.clientX, e.clientY);
-      document.querySelectorAll('.slot.target').forEach(s=>s.classList.remove('target'));
-      const s = slotFromPoint(e.clientX, e.clientY); if(s) s.classList.add('target');
-
-      // trash hover
-      const r = trash.getBoundingClientRect();
-      trash.classList.toggle('hover', e.clientX>=r.left && e.clientX<=r.right && e.clientY>=r.top && e.clientY<=r.bottom);
-
-      // auto-scroll
-      const rect = gridWrap.getBoundingClientRect(), margin = 50;
-      if(e.clientY < rect.top + margin) gridWrap.scrollTop -= 10;
-      else if(e.clientY > rect.bottom - margin) gridWrap.scrollTop += 10;
-    }
-    function clearGhostAndSelection(){
-      if(dragGhost){ dragGhost.remove(); dragGhost=null; }
-      trash.classList.remove('hover');
-      try { const sel = window.getSelection && window.getSelection(); sel && sel.removeAllRanges && sel.removeAllRanges(); } catch {}
-    }
-    function onPointerUp(e){
-      document.removeEventListener('pointermove', onPointerMove, {passive:false});
-      document.removeEventListener('pointerup', onPointerUp, {passive:false});
-      const r = trash.getBoundingClientRect();
-      const inTrash = e.clientX>=r.left && e.clientX<=r.right && e.clientY>=r.top && e.clientY<=r.bottom;
-      const s = slotFromPoint(e.clientX, e.clientY);
-
-      if(inTrash && draggingCustom){
-        const parent = draggingCustom.parentElement;
-        undoStack.push({node: draggingCustom, slot: parent});
-        parent.removeChild(draggingCustom);
-        showToast();
-      } else if(s){
-        if(draggingFromPalette){
-          const pill = makePill(draggingFromPalette.label, draggingFromPalette.color);
-          pill.classList.add('scheduled');
-          s.appendChild(pill); refreshLabel(pill, s);
-        } else if(draggingCustom){
-          draggingCustom.classList.add('scheduled');
-          s.appendChild(draggingCustom);
-          refreshLabel(draggingCustom, s);
-        }
-      }
-      dragActive = false;
-      draggingFromPalette = null;
-      draggingCustom = null;
-      document.querySelectorAll('.slot.target').forEach(s=>s.classList.remove('target'));
-      clearGhostAndSelection();
-    }
-
-    function slotFromPoint(x,y){
-      const el = document.elementFromPoint(x, y);
-      if(!el) return null;
-      if(el.classList && el.classList.contains('slot')) return el;
-      return el.closest && el.closest('.slot');
-    }
-    function makeGhost(text, bg){
-      const g = document.createElement('div');
-      g.className = 'drag-ghost';
-      g.style.background = bg;
-      g.textContent = text;
-      document.body.appendChild(g);
-      return g;
-    }
-    function setGhostPos(g, x, y){ g.style.left = x+'px'; g.style.top = y+'px'; }
-
-    // Resizing (bottom bar)
-    function addResize(p){
-      const hnd = p.querySelector('.handle'); let sy=0, sd=1;
-      hnd.addEventListener('pointerdown', e => {
-        e.stopPropagation(); e.preventDefault();
-        isResizing = true;
-        sy = e.clientY; sd = parseInt(p.dataset.duration)||1;
-        p.setPointerCapture(e.pointerId);
-        const mv = evt => {
-          const d = Math.max(1, sd + Math.round((evt.clientY - sy)/SLOT_H()));
-          p.dataset.duration = d;
-          p.style.height = `calc(var(--slot-h)*${d} - 4px)`;
-          refreshLabel(p, p.parentElement);
-        };
-        const up = () => {
-          isResizing = false;
-          try{ p.releasePointerCapture(e.pointerId); }catch{}
-          document.removeEventListener('pointermove', mv, {passive:false});
-          document.removeEventListener('pointerup', up, {passive:false});
-        };
-        document.addEventListener('pointermove', mv, {passive:false});
-        document.addEventListener('pointerup', up, {passive:false});
-      });
-    }
-
-    // Trash / Undo
-    const undoStack = [];
-    function showToast(){ toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 4000); }
-    undoBtn.addEventListener('click', ()=>{
-      const last = undoStack.pop();
-      if(last){ last.slot.appendChild(last.node); refreshLabel(last.node, last.slot); }
-      toast.classList.remove('show');
-      // also clear any ghost/selection for safety
-      try { const sel = window.getSelection && window.getSelection(); sel && sel.removeAllRanges && sel.removeAllRanges(); } catch {}
-      const dg = document.querySelector('.drag-ghost'); if(dg) dg.remove();
-    });
-
-    // Export
-    exportBtn.addEventListener('click', ()=>{
-      const events=[];
-      document.querySelectorAll('.slot').forEach(slot=>{
-        slot.querySelectorAll('.pill').forEach(p=>{
-          const dur = parseInt(p.dataset.duration)||1;
-          const sHM = slot.dataset.hm;
-          const startMin = minutes(sHM);
-          const endMin = startMin + dur*15;
-          const dtStart = new Date(datePicker.value + 'T00:00');
-          const dtEnd = new Date(datePicker.value + 'T00:00');
-          dtStart.setMinutes(startMin);
-          dtEnd.setMinutes(endMin);
-          events.push(
-            ['BEGIN:VEVENT',
-             'DTSTART:' + fmtLocal(dtStart),
-             'DTEND:' + fmtLocal(dtEnd),
-             'SUMMARY:' + p.dataset.action,
-             'END:VEVENT'].join('\\n')
-          );
-        });
-      });
-      if(!events.length){ alert('No events to export'); return; }
-      const ics=['BEGIN:VCALENDAR','VERSION:2.0','CALSCALE:GREGORIAN',...events,'END:VCALENDAR'].join('\\n');
-      const blob=new Blob([ics],{type:'text/calendar'});
-      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-      a.download = 'daily_schedule_' + datePicker.value + '.ics';
-      a.click();
-    });
-
-    // Clear on reload / date change (no persistence)
-    function clearAndForget(){
-      const key = 'plannerData:'+ datePicker.value;
-      localStorage.removeItem(key);
-      document.querySelectorAll('.pill').forEach(p=>p.remove());
-      // also nuke any stray ghost/selection
-      const dg = document.querySelector('.drag-ghost'); if(dg) dg.remove();
-      try { const sel = window.getSelection && window.getSelection(); sel && sel.removeAllRanges && sel.removeAllRanges(); } catch {}
-    }
-    clearAndForget();
-
-    // Current-time line
-    function updateNowLine(){
-      const now = new Date();
-      const mins = now.getHours()*60 + now.getMinutes();
-      const pxPerMin = SLOT_H()/15;
-      nowLine.style.top = (mins * pxPerMin) + 'px';
-    }
-    setInterval(updateNowLine, 60000);
-    updateNowLine();
-
-    // Palette to schedule flow (same as before)
-    document.querySelectorAll('#todo .card').forEach(card => {
-      card.draggable = true;
-      card.addEventListener('dragstart', e => {
-        e.dataTransfer.setData('label', card.innerText);
-        e.dataTransfer.setData('color', getComputedStyle(card).backgroundColor);
-      });
-      card.addEventListener('pointerdown', e => {
-        e.preventDefault();
-        draggingFromPalette = {label: card.innerText, color: getComputedStyle(card).backgroundColor};
-        beginPointerDrag(e, card.innerText, getComputedStyle(card).backgroundColor);
-      }, {passive:false});
-    });
-
-    // When dropping a desktop-dragged palette card
-    document.addEventListener('drop', e => {
-      const s = slotFromPoint(e.clientX, e.clientY);
-      if(!s) return;
-      const label = e.dataTransfer && e.dataTransfer.getData('label');
-      const color = e.dataTransfer && e.dataTransfer.getData('color');
-      if(label && color){
-        const pill = makePill(label, color);
-        pill.classList.add('scheduled');
-        s.appendChild(pill); refreshLabel(pill, s);
-      }
-    });
-
-  })();
-  </script>
-</body>
+    <div class="live-region sr-only" id="live-region" aria-live="assertive"></div>
+    <script type="module" src="./js/app.js?v=2"></script>
+  </body>
 </html>
