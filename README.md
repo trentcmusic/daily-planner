@@ -5,6 +5,9 @@ An installable, offline-capable daily planner designed for low-friction adjustme
 ## What it supports
 
 - Original color-coded action palette and categories
+- Iridescent background with translucent, high-readability planner panels
+- Always-visible touch-friendly scroll rails for the actions and daily schedule
+- Custom actions with editable names and colors, saved in the browser
 - A full 24-hour schedule in 15-minute increments
 - Mouse drag/drop and touch drag/drop
 - Tap an action, then tap a time as an easier mobile alternative

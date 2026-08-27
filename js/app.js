@@ -1,4 +1,4 @@
-import { CATEGORIES, SLOTS_PER_DAY } from './config.js';
+import { CATEGORIES, SLOTS_PER_DAY, contrastText } from './config.js';
 import { canPlace, clamp, eventTimeRange, formatSlot, makeEvent, maximumDuration } from './planner-model.js';
 import { loadDay, saveDay } from './storage.js';
 import { downloadCalendar } from './ics.js';
@@ -6,6 +6,7 @@ import { downloadCalendar } from './ics.js';
 const elements = {
   palette: document.querySelector('#palette'),
   palettePanel: document.querySelector('.palette-panel'),
+  paletteContent: document.querySelector('#palette-content'),
   timeline: document.querySelector('#timeline'),
   timelineWrap: document.querySelector('#timeline-wrap'),
   date: document.querySelector('#planner-date'),
@@ -15,6 +16,15 @@ const elements = {
   exportButton: document.querySelector('#export-button'),
   openPalette: document.querySelector('#open-palette'),
   closePalette: document.querySelector('#close-palette'),
+  paletteScrollbar: document.querySelector('#palette-scrollbar'),
+  timelineScrollbar: document.querySelector('#timeline-scrollbar'),
+  customDialog: document.querySelector('#custom-action-dialog'),
+  customForm: document.querySelector('#custom-action-form'),
+  customName: document.querySelector('#custom-action-name'),
+  customColor: document.querySelector('#custom-action-color'),
+  customPreview: document.querySelector('#custom-action-preview'),
+  closeCustomAction: document.querySelector('#close-custom-action'),
+  cancelCustomAction: document.querySelector('#cancel-custom-action'),
   toast: document.querySelector('#toast'),
   toastMessage: document.querySelector('#toast-message'),
   undoButton: document.querySelector('#undo-button'),
@@ -31,6 +41,12 @@ let pointerDrag = null;
 let resizeSession = null;
 let suppressClick = false;
 let nativeDragPayload = null;
+let customCategories = [];
+let editingCustomId = null;
+let paletteScrollControl = null;
+let timelineScrollControl = null;
+
+const CUSTOM_ACTIONS_KEY = 'adhd-daily-planner-custom-actions-v1';
 
 function localDateString(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -56,32 +72,209 @@ function eventById(id) {
   return events.find((event) => event.id === id) || null;
 }
 
+function loadCustomCategories() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(CUSTOM_ACTIONS_KEY) || '[]');
+    if (!Array.isArray(stored)) return [];
+    return stored
+      .filter((category) => category && typeof category.name === 'string' && /^#[0-9a-f]{6}$/i.test(category.color))
+      .map((category) => ({
+        id: String(category.id || `custom-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+        name: category.name.trim().slice(0, 60),
+        color: category.color,
+        text: contrastText(category.color),
+        custom: true,
+      }))
+      .filter((category) => category.name);
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomCategories() {
+  try {
+    localStorage.setItem(CUSTOM_ACTIONS_KEY, JSON.stringify(customCategories));
+    return true;
+  } catch {
+    announce('Your custom action works now, but this browser could not save it for later.');
+    return false;
+  }
+}
+
+function createActionCard(category) {
+  const card = document.createElement('button');
+  card.className = 'action-card';
+  card.type = 'button';
+  card.textContent = category.name;
+  card.style.setProperty('--category-color', category.color);
+  card.style.setProperty('--category-text', category.text);
+  card.dataset.category = category.id || category.name;
+  card.draggable = false;
+  card.setAttribute('aria-pressed', String((selectedCategory?.id || selectedCategory?.name) === (category.id || category.name)));
+  card.addEventListener('click', (event) => {
+    if (suppressClick) return;
+    event.preventDefault();
+    chooseCategory(category);
+  });
+  card.addEventListener('dragstart', (event) => {
+    nativeDragPayload = { type: 'category', category };
+    event.dataTransfer.effectAllowed = 'copy';
+    event.dataTransfer.setData('text/plain', category.name);
+  });
+  card.addEventListener('dragend', clearDropTarget);
+  card.addEventListener('pointerdown', (event) => beginPointerDrag(event, { type: 'category', category }, card));
+  return card;
+}
+
 function renderPalette() {
   elements.palette.replaceChildren();
   for (const category of CATEGORIES) {
-    const card = document.createElement('button');
-    card.className = 'action-card';
-    card.type = 'button';
-    card.textContent = category.name;
-    card.style.setProperty('--category-color', category.color);
-    card.style.setProperty('--category-text', category.text);
-    card.dataset.category = category.name;
-    card.draggable = false;
-    card.setAttribute('aria-pressed', String(selectedCategory?.name === category.name));
-    card.addEventListener('click', (event) => {
-      if (suppressClick) return;
-      event.preventDefault();
-      chooseCategory(category);
-    });
-    card.addEventListener('dragstart', (event) => {
-      nativeDragPayload = { type: 'category', category };
-      event.dataTransfer.effectAllowed = 'copy';
-      event.dataTransfer.setData('text/plain', category.name);
-    });
-    card.addEventListener('dragend', clearDropTarget);
-    card.addEventListener('pointerdown', (event) => beginPointerDrag(event, { type: 'category', category }, card));
-    elements.palette.append(card);
+    elements.palette.append(createActionCard(category));
   }
+  for (const category of customCategories) {
+    const row = document.createElement('div');
+    row.className = 'custom-action-item';
+    row.append(createActionCard(category));
+    const editButton = document.createElement('button');
+    editButton.className = 'custom-edit-button';
+    editButton.type = 'button';
+    editButton.textContent = '✎';
+    editButton.setAttribute('aria-label', `Edit ${category.name}`);
+    editButton.addEventListener('click', () => openCustomActionEditor(category));
+    row.append(editButton);
+    elements.palette.append(row);
+  }
+  const customButton = document.createElement('button');
+  customButton.className = 'custom-action-button';
+  customButton.type = 'button';
+  customButton.textContent = '＋ Create custom action';
+  customButton.addEventListener('click', () => openCustomActionEditor());
+  elements.palette.append(customButton);
+  requestAnimationFrame(() => paletteScrollControl?.sync());
+}
+
+function updateCustomPreview() {
+  const color = elements.customColor.value;
+  elements.customPreview.textContent = elements.customName.value.trim() || 'Your custom action';
+  elements.customPreview.style.background = color;
+  elements.customPreview.style.color = contrastText(color);
+}
+
+function openCustomActionEditor(category = null) {
+  editingCustomId = category?.id || null;
+  elements.customName.value = category?.name || '';
+  elements.customColor.value = category?.color || '#7c6ce7';
+  document.querySelector('#custom-action-title').textContent = category ? 'Edit custom action' : 'Custom action';
+  updateCustomPreview();
+  if (typeof elements.customDialog.showModal === 'function') elements.customDialog.showModal();
+  else elements.customDialog.setAttribute('open', '');
+  requestAnimationFrame(() => elements.customName.focus());
+}
+
+function closeCustomActionEditor() {
+  editingCustomId = null;
+  if (typeof elements.customDialog.close === 'function') elements.customDialog.close();
+  else elements.customDialog.removeAttribute('open');
+}
+
+function saveCustomAction(formEvent) {
+  formEvent.preventDefault();
+  if (!elements.customForm.reportValidity()) return;
+  const name = elements.customName.value.trim().slice(0, 60);
+  const color = elements.customColor.value;
+  let category = customCategories.find((item) => item.id === editingCustomId);
+  if (category) {
+    category.name = name;
+    category.color = color;
+    category.text = contrastText(color);
+  } else {
+    category = {
+      id: globalThis.crypto?.randomUUID?.() || `custom-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      name,
+      color,
+      text: contrastText(color),
+      custom: true,
+    };
+    customCategories.push(category);
+  }
+  saveCustomCategories();
+  selectedEventId = null;
+  selectedCategory = category;
+  renderPalette();
+  renderEvents();
+  closeCustomActionEditor();
+  elements.palettePanel.classList.remove('open');
+  announce(`${category.name} is ready. Tap a time in the schedule to place it.`);
+}
+
+function wireVisibleScrollbar(container, rail) {
+  const thumb = rail.querySelector('.visible-scrollbar-thumb');
+  let dragging = null;
+
+  function sync() {
+    const trackHeight = rail.clientHeight;
+    if (!trackHeight) return;
+    const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+    const scrollable = maximumScroll > 1;
+    rail.classList.toggle('inactive', !scrollable);
+    rail.setAttribute('aria-disabled', String(!scrollable));
+    const thumbHeight = scrollable
+      ? Math.max(48, Math.min(trackHeight, trackHeight * (container.clientHeight / container.scrollHeight)))
+      : trackHeight;
+    const travel = Math.max(0, trackHeight - thumbHeight);
+    const top = scrollable ? (container.scrollTop / maximumScroll) * travel : 0;
+    thumb.style.height = `${thumbHeight}px`;
+    thumb.style.transform = `translate3d(0, ${top}px, 0)`;
+    rail.setAttribute('aria-valuenow', String(scrollable ? Math.round((container.scrollTop / maximumScroll) * 100) : 0));
+  }
+
+  function startDrag(pointerEvent) {
+    const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+    if (!maximumScroll) return;
+    pointerEvent.preventDefault();
+    rail.setPointerCapture?.(pointerEvent.pointerId);
+    const railBounds = rail.getBoundingClientRect();
+    const thumbHeight = thumb.offsetHeight;
+    const travel = Math.max(1, railBounds.height - thumbHeight);
+    if (pointerEvent.target !== thumb) {
+      const targetTop = clamp(pointerEvent.clientY - railBounds.top - (thumbHeight / 2), 0, travel);
+      container.scrollTop = (targetTop / travel) * maximumScroll;
+    }
+    dragging = { pointerId: pointerEvent.pointerId, startY: pointerEvent.clientY, startScroll: container.scrollTop, ratio: maximumScroll / travel };
+    sync();
+  }
+
+  function moveDrag(pointerEvent) {
+    if (!dragging || dragging.pointerId !== pointerEvent.pointerId) return;
+    pointerEvent.preventDefault();
+    container.scrollTop = dragging.startScroll + ((pointerEvent.clientY - dragging.startY) * dragging.ratio);
+  }
+
+  function endDrag(pointerEvent) {
+    if (!dragging || dragging.pointerId !== pointerEvent.pointerId) return;
+    dragging = null;
+  }
+
+  rail.addEventListener('pointerdown', startDrag);
+  rail.addEventListener('pointermove', moveDrag);
+  rail.addEventListener('pointerup', endDrag);
+  rail.addEventListener('pointercancel', endDrag);
+  rail.addEventListener('keydown', (keyboardEvent) => {
+    const amount = keyboardEvent.key === 'PageDown' || keyboardEvent.key === 'PageUp' ? container.clientHeight * .85 : slotHeight();
+    if (keyboardEvent.key === 'ArrowDown' || keyboardEvent.key === 'PageDown') container.scrollBy({ top: amount, behavior: 'smooth' });
+    else if (keyboardEvent.key === 'ArrowUp' || keyboardEvent.key === 'PageUp') container.scrollBy({ top: -amount, behavior: 'smooth' });
+    else if (keyboardEvent.key === 'Home') container.scrollTo({ top: 0, behavior: 'smooth' });
+    else if (keyboardEvent.key === 'End') container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    else return;
+    keyboardEvent.preventDefault();
+  });
+  container.addEventListener('scroll', sync, { passive: true });
+  if ('ResizeObserver' in window) {
+    const observer = new ResizeObserver(sync);
+    observer.observe(container);
+    if (container.firstElementChild) observer.observe(container.firstElementChild);
+  } else window.addEventListener('resize', sync);
+  return { sync };
 }
 
 function renderTimeline() {
@@ -104,6 +297,7 @@ function renderTimeline() {
     }
   }
   elements.timeline.replaceChildren(fragment);
+  requestAnimationFrame(() => timelineScrollControl?.sync());
 }
 
 function renderEvents() {
@@ -153,7 +347,7 @@ function renderEvents() {
 
 function chooseCategory(category) {
   selectedEventId = null;
-  selectedCategory = selectedCategory?.name === category.name ? null : category;
+  selectedCategory = (selectedCategory?.id || selectedCategory?.name) === (category.id || category.name) ? null : category;
   renderPalette();
   renderEvents();
   if (selectedCategory) {
@@ -394,6 +588,7 @@ function changeDate() {
   renderPalette();
   renderEvents();
   elements.timelineWrap.scrollTop = Math.max(0, (new Date().getHours() - 1) * 4 * slotHeight());
+  timelineScrollControl?.sync();
 }
 
 function exportDay() {
@@ -440,7 +635,15 @@ elements.deleteButton.addEventListener('drop', (event) => {
 elements.undoButton.addEventListener('click', undoDelete);
 elements.exportButton.addEventListener('click', exportDay);
 elements.date.addEventListener('change', changeDate);
-elements.openPalette.addEventListener('click', () => elements.palettePanel.classList.add('open'));
+elements.customName.addEventListener('input', updateCustomPreview);
+elements.customColor.addEventListener('input', updateCustomPreview);
+elements.customForm.addEventListener('submit', saveCustomAction);
+elements.closeCustomAction.addEventListener('click', closeCustomActionEditor);
+elements.cancelCustomAction.addEventListener('click', closeCustomActionEditor);
+elements.openPalette.addEventListener('click', () => {
+  elements.palettePanel.classList.add('open');
+  requestAnimationFrame(() => paletteScrollControl?.sync());
+});
 elements.closePalette.addEventListener('click', () => elements.palettePanel.classList.remove('open'));
 window.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
@@ -458,11 +661,18 @@ function initialize() {
   elements.date.value = today;
   selectedDate = today;
   events = loadDay(selectedDate);
+  customCategories = loadCustomCategories();
+  paletteScrollControl = wireVisibleScrollbar(elements.paletteContent, elements.paletteScrollbar);
+  timelineScrollControl = wireVisibleScrollbar(elements.timelineWrap, elements.timelineScrollbar);
   renderPalette();
   renderTimeline();
   renderEvents();
   updateDateHeading();
-  requestAnimationFrame(() => { elements.timelineWrap.scrollTop = Math.max(0, (new Date().getHours() - 1) * 4 * slotHeight()); });
+  requestAnimationFrame(() => {
+    elements.timelineWrap.scrollTop = Math.max(0, (new Date().getHours() - 1) * 4 * slotHeight());
+    paletteScrollControl.sync();
+    timelineScrollControl.sync();
+  });
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./service-worker.js').catch(() => {});
 }
 
