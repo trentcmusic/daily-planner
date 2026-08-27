@@ -31,7 +31,7 @@ export function nearestHourSlot(date) {
 }
 
 export function startingTimelineSlot(isCurrentDay, date) {
-  return isCurrentDay ? nearestHourSlot(date) : 0;
+  return isCurrentDay ? nearestHourSlot(date) : 24;
 }
 
 export function minutesForSlot(slot) {

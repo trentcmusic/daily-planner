@@ -1,10 +1,10 @@
-const CACHE_NAME = 'daily-planner-v5';
+const CACHE_NAME = 'daily-planner-v6';
 const APP_SHELL = [
   './',
   './index.html',
   './styles.css?v=4',
   './manifest.json',
-  './js/app.js?v=4',
+  './js/app.js?v=5',
   './js/config.js',
   './js/planner-model.js',
   './js/storage.js',
