@@ -64,6 +64,7 @@ let selectedEventId = null;
 let undoRecord = null;
 let undoTimer = null;
 let pointerDrag = null;
+let longPressSession = null;
 let resizeSession = null;
 let suppressClick = false;
 let nativeDragPayload = null;
@@ -286,7 +287,9 @@ function renderTimeline() {
 }
 
 function renderEvents() {
+  cancelEventLongPress();
   elements.timeline.querySelectorAll('.scheduled-event').forEach((element) => element.remove());
+  const usesMoveGrip = window.matchMedia?.('(pointer: coarse)').matches;
   for (const event of events) {
     const item = document.createElement('div');
     item.className = 'scheduled-event';
@@ -295,18 +298,19 @@ function renderEvents() {
     item.draggable = false;
     item.tabIndex = 0;
     item.setAttribute('role', 'button');
-    item.setAttribute('aria-label', `${event.title}, ${eventTimeRange(event)}. Drag or use arrow keys to move in 10-minute steps; press and hold for calendar options; use the resize bar to change duration.`);
+    item.setAttribute('aria-label', `${event.title}, ${eventTimeRange(event)}. Press and hold for calendar options. ${usesMoveGrip ? 'Use the move grip' : 'Drag the item'} or use arrow keys to move in 10-minute steps; use the resize bar to change duration.`);
     item.style.setProperty('--event-color', event.color);
     item.style.setProperty('--event-text', event.text);
     item.style.top = `calc(var(--slot-height) * ${event.start / SLOT_MINUTES})`;
     item.style.height = `calc(var(--slot-height) * ${event.duration / SLOT_MINUTES} - 3px)`;
-    item.innerHTML = '<span class="event-title"></span><span class="event-time"></span><span class="resize-handle" role="separator" aria-label="Resize event" tabindex="-1"><span></span></span>';
+    item.innerHTML = '<span class="event-title"></span><span class="event-time"></span><span class="move-handle" role="button" aria-label="Drag to move event" tabindex="-1">↕</span><span class="resize-handle" role="separator" aria-label="Resize event" tabindex="-1"><span></span></span>';
     item.querySelector('.event-title').textContent = event.title;
     item.querySelector('.event-time').textContent = eventTimeRange(event);
     item.addEventListener('click', () => { if (!suppressClick) selectEvent(event.id); });
     item.addEventListener('keydown', (keyboardEvent) => handleEventKeydown(keyboardEvent, event.id));
     item.addEventListener('contextmenu', (contextEvent) => {
       contextEvent.preventDefault();
+      cancelEventLongPress();
       openEventActions(event.id);
     });
     item.addEventListener('dragstart', (dragEvent) => {
@@ -325,7 +329,13 @@ function renderEvents() {
       clearDropTarget();
     });
     item.addEventListener('pointerdown', (pointerEvent) => {
-      if (pointerEvent.target.closest('.resize-handle')) return;
+      if (pointerEvent.target.closest('.resize-handle, .move-handle')) return;
+      if (pointerEvent.pointerType === 'touch') startEventLongPress(pointerEvent, event.id, item);
+      else beginPointerDrag(pointerEvent, { type: 'event', eventId: event.id }, item);
+    });
+    item.querySelector('.move-handle').addEventListener('pointerdown', (pointerEvent) => {
+      pointerEvent.preventDefault();
+      pointerEvent.stopPropagation();
       beginPointerDrag(pointerEvent, { type: 'event', eventId: event.id }, item);
     });
     item.querySelector('.resize-handle').addEventListener('pointerdown', (pointerEvent) => startResize(pointerEvent, event.id, item));
@@ -419,13 +429,16 @@ function copyEventToProfile(targetProfileId, moveFromCurrent = false) {
 
 function updateSelectionUi() {
   const selected = eventById(selectedEventId);
+  const usesMoveGrip = window.matchMedia?.('(pointer: coarse)').matches;
   elements.deleteButton.disabled = !selected;
   elements.clearCalendarButton.disabled = events.length === 0;
   elements.selectionHint.textContent = selected
-    ? `${selected.title} • ${eventTimeRange(selected)} — drag to move, or press and hold for calendar options`
+    ? `${selected.title} • ${eventTimeRange(selected)} — ${usesMoveGrip ? 'use the ↕ grip' : 'drag the item'} to move, or press and hold for options`
     : selectedCategory
       ? `${selectedCategory.name} selected — tap a time to place it`
-      : 'Nothing selected — choose an action, or press and hold a scheduled item for calendar options';
+      : usesMoveGrip
+        ? 'Scroll anywhere. Press and hold an item for options; use its ↕ grip to move it.'
+        : 'Press and hold an item for options, or drag it to move.';
 }
 
 function addCategoryAt(category, start) {
@@ -496,8 +509,43 @@ function completeDrop(payload, minute) {
   return payload.type === 'category' ? addCategoryAt(payload.category, minute) : moveEventTo(payload.eventId, minute);
 }
 
+function cancelEventLongPress() {
+  if (!longPressSession) return;
+  clearTimeout(longPressSession.timer);
+  longPressSession.item.removeEventListener('pointermove', longPressSession.move);
+  longPressSession.item.removeEventListener('pointerup', longPressSession.end);
+  longPressSession.item.removeEventListener('pointercancel', longPressSession.end);
+  longPressSession = null;
+}
+
+function startEventLongPress(pointerEvent, eventId, item) {
+  if (pointerEvent.button !== 0) return;
+  cancelEventLongPress();
+  const startX = pointerEvent.clientX;
+  const startY = pointerEvent.clientY;
+  const pointerId = pointerEvent.pointerId;
+  const end = (event) => {
+    if (event.pointerId === pointerId) cancelEventLongPress();
+  };
+  const move = (event) => {
+    if (event.pointerId !== pointerId) return;
+    if (Math.hypot(event.clientX - startX, event.clientY - startY) > 9) cancelEventLongPress();
+  };
+  const timer = setTimeout(() => {
+    cancelEventLongPress();
+    suppressClick = true;
+    openEventActions(eventId);
+    setTimeout(() => { suppressClick = false; }, 800);
+  }, LONG_PRESS_MILLISECONDS);
+  longPressSession = { item, move, end, timer };
+  item.addEventListener('pointermove', move);
+  item.addEventListener('pointerup', end);
+  item.addEventListener('pointercancel', end);
+}
+
 function beginPointerDrag(event, payload, source) {
   if (event.button !== 0 || resizeSession) return;
+  cancelEventLongPress();
   pointerDrag = {
     pointerId: event.pointerId,
     payload,
@@ -508,20 +556,7 @@ function beginPointerDrag(event, payload, source) {
     originalStart: payload.type === 'event' ? eventById(payload.eventId)?.start || 0 : null,
     started: false,
     ghost: null,
-    longPressTimer: null,
   };
-  if (event.pointerType === 'touch' && payload.type === 'event') {
-    pointerDrag.longPressTimer = setTimeout(() => {
-      if (!pointerDrag || pointerDrag.pointerId !== event.pointerId || pointerDrag.started) return;
-      const current = pointerDrag;
-      current.source.removeEventListener('pointermove', movePointerDrag);
-      if (current.source.hasPointerCapture?.(current.pointerId)) current.source.releasePointerCapture(current.pointerId);
-      pointerDrag = null;
-      suppressClick = true;
-      openEventActions(current.payload.eventId);
-      setTimeout(() => { suppressClick = false; }, 800);
-    }, LONG_PRESS_MILLISECONDS);
-  }
   source.setPointerCapture?.(event.pointerId);
   source.addEventListener('pointermove', movePointerDrag);
   source.addEventListener('pointerup', endPointerDrag, { once: true });
@@ -532,7 +567,6 @@ function movePointerDrag(event) {
   if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
   const distance = Math.hypot(event.clientX - pointerDrag.startX, event.clientY - pointerDrag.startY);
   if (!pointerDrag.started && distance < 7) return;
-  clearTimeout(pointerDrag.longPressTimer);
   event.preventDefault();
   if (!pointerDrag.started) {
     pointerDrag.started = true;
@@ -555,7 +589,6 @@ function movePointerDrag(event) {
 function finishPointerDrag(event, cancelled) {
   if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
   const current = pointerDrag;
-  clearTimeout(current.longPressTimer);
   current.source.removeEventListener('pointermove', movePointerDrag);
   current.source.classList.remove('drag-source');
   current.ghost?.remove();
@@ -726,7 +759,8 @@ function remindersAreActive() {
 function updateReminderUi() {
   const enabled = remindersAreActive();
   elements.reminderToggle.setAttribute('aria-pressed', String(enabled));
-  elements.reminderToggle.textContent = enabled ? '5-minute reminders on' : 'Enable 5-minute reminders';
+  elements.reminderToggle.textContent = enabled ? 'Reminders on' : 'Reminders';
+  elements.reminderToggle.setAttribute('aria-label', enabled ? 'Disable five-minute reminders' : 'Enable five-minute reminders');
 }
 
 function reportReminderStatus(message) {

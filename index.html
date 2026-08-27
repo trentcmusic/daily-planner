@@ -10,7 +10,7 @@
     <meta name="description" content="A calm, flexible daily planner with 15-minute scheduling.">
     <link rel="manifest" href="./manifest.json">
     <link rel="apple-touch-icon" href="./icons/icon-192.png">
-    <link rel="stylesheet" href="./styles.css?v=10">
+    <link rel="stylesheet" href="./styles.css?v=11">
     <title>Daily Planner</title>
   </head>
   <body>
@@ -52,10 +52,10 @@
               <p class="eyebrow" id="friendly-date">Today</p>
               <h2 id="schedule-title">Your day</h2>
               <button class="profile-switch" id="profile-switch" type="button">Choose person</button>
-              <button class="profile-switch reminder-toggle" id="reminder-toggle" type="button" aria-pressed="false">Enable 5-minute reminders</button>
             </div>
             <div class="schedule-actions">
               <button class="button mobile-only" id="open-palette" type="button">＋ Add action</button>
+              <button class="button button-small reminder-toggle" id="reminder-toggle" type="button" aria-pressed="false" aria-label="Enable five-minute reminders">Reminders</button>
               <button class="button button-small" id="clear-calendar-button" type="button" disabled>Clear calendar</button>
               <button class="button button-danger" id="trash-button" type="button" aria-label="Delete selected event" disabled>Delete</button>
             </div>
@@ -189,6 +189,6 @@
       <button id="undo-button" type="button">Undo</button>
     </div>
     <div class="live-region sr-only" id="live-region" aria-live="assertive"></div>
-    <script type="module" src="./js/app.js?v=13"></script>
+    <script type="module" src="./js/app.js?v=14"></script>
   </body>
 </html>
