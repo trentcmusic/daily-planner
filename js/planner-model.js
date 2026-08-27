@@ -25,6 +25,15 @@ export function maximumDuration(events, event) {
   return Math.max(1, Math.min(MAX_DURATION_SLOTS, SLOTS_PER_DAY - event.start, nextStart - event.start));
 }
 
+export function nearestHourSlot(date) {
+  const roundedHour = Math.round(((date.getHours() * 60) + date.getMinutes()) / 60);
+  return Math.min(SLOTS_PER_DAY - 4, roundedHour * 4);
+}
+
+export function startingTimelineSlot(isCurrentDay, date) {
+  return isCurrentDay ? nearestHourSlot(date) : 0;
+}
+
 export function minutesForSlot(slot) {
   return slot * SLOT_MINUTES;
 }

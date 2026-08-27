@@ -1,5 +1,5 @@
 import { CATEGORIES, SLOTS_PER_DAY, contrastText } from './config.js';
-import { canPlace, clamp, eventTimeRange, formatSlot, makeEvent, maximumDuration } from './planner-model.js';
+import { canPlace, clamp, eventTimeRange, formatSlot, makeEvent, maximumDuration, startingTimelineSlot } from './planner-model.js';
 import { loadDay, saveDay } from './storage.js';
 import { downloadCalendar } from './ics.js';
 
@@ -50,6 +50,15 @@ const CUSTOM_ACTIONS_KEY = 'adhd-daily-planner-custom-actions-v1';
 
 function localDateString(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function timelineStartSlot(date, now = new Date()) {
+  return startingTimelineSlot(date === localDateString(now), now);
+}
+
+function scrollTimelineToStart(date) {
+  elements.timelineWrap.scrollTop = timelineStartSlot(date) * slotHeight();
+  timelineScrollControl?.sync();
 }
 
 function announce(message) {
@@ -587,8 +596,7 @@ function changeDate() {
   updateDateHeading();
   renderPalette();
   renderEvents();
-  elements.timelineWrap.scrollTop = Math.max(0, (new Date().getHours() - 1) * 4 * slotHeight());
-  timelineScrollControl?.sync();
+  scrollTimelineToStart(selectedDate);
 }
 
 function exportDay() {
@@ -669,9 +677,8 @@ function initialize() {
   renderEvents();
   updateDateHeading();
   requestAnimationFrame(() => {
-    elements.timelineWrap.scrollTop = Math.max(0, (new Date().getHours() - 1) * 4 * slotHeight());
+    scrollTimelineToStart(selectedDate);
     paletteScrollControl.sync();
-    timelineScrollControl.sync();
   });
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./service-worker.js').catch(() => {});
 }

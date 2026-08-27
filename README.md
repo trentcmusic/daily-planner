@@ -9,6 +9,7 @@ An installable, offline-capable daily planner designed for low-friction adjustme
 - Always-visible touch-friendly scroll rails for the actions and daily schedule
 - Custom actions with editable names and colors, saved in the browser
 - A full 24-hour schedule in 15-minute increments
+- Today opens at the nearest current hour; future dates open at midnight
 - Mouse drag/drop and touch drag/drop
 - Tap an action, then tap a time as an easier mobile alternative
 - Move and repeatedly resize events up to 8 hours
