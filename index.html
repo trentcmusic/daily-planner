@@ -10,7 +10,7 @@
     <meta name="description" content="A calm, flexible daily planner with 15-minute scheduling.">
     <link rel="manifest" href="./manifest.json">
     <link rel="apple-touch-icon" href="./icons/icon-192.png">
-    <link rel="stylesheet" href="./styles.css?v=11">
+    <link rel="stylesheet" href="./styles.css?v=12">
     <title>Daily Planner</title>
   </head>
   <body>
@@ -22,6 +22,10 @@
           <h1>Daily Planner</h1>
         </div>
         <div class="topbar-actions">
+          <button class="sync-pill" id="sync-button" type="button" aria-label="Open cloud sync settings">
+            <span class="sync-dot" aria-hidden="true"></span>
+            <span id="sync-button-label">Sync</span>
+          </button>
           <label class="date-control" for="planner-date">
             <span>Plan for</span>
             <input id="planner-date" name="planner-date" type="date" aria-describedby="date-help">
@@ -69,6 +73,71 @@
         </section>
       </main>
     </div>
+
+    <dialog class="sync-dialog" id="sync-dialog" aria-labelledby="sync-dialog-title">
+      <div class="sync-dialog-content">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">One planner on every device</p>
+            <h2 id="sync-dialog-title">Cloud sync</h2>
+          </div>
+          <button class="icon-button" id="close-sync-dialog" type="button" aria-label="Close cloud sync">×</button>
+        </div>
+
+        <div class="sync-status-card" id="sync-status-card" role="status" aria-live="polite">
+          <span class="sync-dot" aria-hidden="true"></span>
+          <span id="sync-status-message">Checking sync…</span>
+        </div>
+
+        <section id="sync-not-configured" hidden>
+          <h3>Ready for connection</h3>
+          <p class="helper">The app update is installed. Finish the one-time Supabase connection to turn on shared syncing.</p>
+        </section>
+
+        <section id="sync-signed-out" hidden>
+          <h3>Sign in without a password</h3>
+          <p class="helper">We’ll email you a secure sign-in link. Use a separate email for each person.</p>
+          <form class="sync-form" id="sync-email-form">
+            <label class="field-label" for="sync-email">
+              <span>Email address</span>
+              <input id="sync-email" type="email" autocomplete="email" required placeholder="you@example.com">
+            </label>
+            <button class="button button-primary" type="submit">Email my sign-in link</button>
+          </form>
+        </section>
+
+        <section id="sync-needs-workspace" hidden>
+          <h3>Connect your shared planner</h3>
+          <p class="helper">The first person creates it. The second person joins with the eight-character invite code.</p>
+          <button class="button button-primary" id="create-workspace" type="button">Create our shared planner</button>
+          <div class="sync-divider"><span>or join</span></div>
+          <form class="sync-form sync-join-form" id="join-workspace-form">
+            <label class="field-label" for="workspace-code">
+              <span>Invite code</span>
+              <input id="workspace-code" type="text" inputmode="text" autocapitalize="characters" maxlength="12" required placeholder="AB12CD34">
+            </label>
+            <button class="button" type="submit">Join planner</button>
+          </form>
+        </section>
+
+        <section id="sync-connected" hidden>
+          <p class="eyebrow">Connected as <span id="sync-account-email"></span></p>
+          <h3 id="sync-workspace-name">Shared planner</h3>
+          <p class="helper">Give this invite code to the other person after they sign in on their device.</p>
+          <div class="invite-code-row">
+            <code id="sync-invite-code"></code>
+            <button class="button button-small" id="copy-invite-code" type="button">Copy code</button>
+          </div>
+          <div class="dialog-actions sync-actions">
+            <button class="button button-primary" id="sync-now" type="button">Sync now</button>
+            <button class="button" id="sync-sign-out" type="button">Sign out</button>
+          </div>
+          <p class="sync-privacy-note">Trent, Diane, and Joint stay separate inside this shared planner. Custom buttons remain in their assigned action bank.</p>
+        </section>
+
+        <p class="event-action-note" id="sync-error" role="alert" aria-live="assertive"></p>
+      </div>
+    </dialog>
 
     <dialog class="profile-dialog" id="profile-dialog" aria-labelledby="profile-dialog-title">
       <div class="profile-dialog-content">
@@ -189,6 +258,6 @@
       <button id="undo-button" type="button">Undo</button>
     </div>
     <div class="live-region sr-only" id="live-region" aria-live="assertive"></div>
-    <script type="module" src="./js/app.js?v=14"></script>
+    <script type="module" src="./js/app.js?v=15"></script>
   </body>
 </html>
