@@ -1,7 +1,7 @@
 import { CATEGORIES, SLOTS_PER_DAY, contrastText, removeCustomCategory } from './config.js?v=2';
 import { canPlace, clamp, eventTimeRange, formatSlot, makeEvent, maximumDuration, startingTimelineSlot } from './planner-model.js?v=2';
 import { loadDay, saveDay } from './storage.js?v=2';
-import { downloadCalendar } from './ics.js?v=2';
+import { createCalendarFile, downloadCalendar, googleCalendarUrl } from './ics.js?v=3';
 
 const elements = {
   palette: document.querySelector('#palette'),
@@ -26,6 +26,13 @@ const elements = {
   closeCustomAction: document.querySelector('#close-custom-action'),
   cancelCustomAction: document.querySelector('#cancel-custom-action'),
   deleteCustomAction: document.querySelector('#delete-custom-action'),
+  calendarDialog: document.querySelector('#calendar-dialog'),
+  closeCalendarDialog: document.querySelector('#close-calendar-dialog'),
+  doneCalendarDialog: document.querySelector('#done-calendar-dialog'),
+  googleEventList: document.querySelector('#google-event-list'),
+  shareCalendarButton: document.querySelector('#share-calendar-button'),
+  downloadCalendarButton: document.querySelector('#download-calendar-button'),
+  calendarShareNote: document.querySelector('#calendar-share-note'),
   toast: document.querySelector('#toast'),
   toastMessage: document.querySelector('#toast-message'),
   undoButton: document.querySelector('#undo-button'),
@@ -616,14 +623,99 @@ function changeDate() {
   scrollTimelineToStart(selectedDate);
 }
 
-function exportDay() {
+function closeCalendarDialog() {
+  if (typeof elements.calendarDialog.close === 'function') elements.calendarDialog.close();
+  else elements.calendarDialog.removeAttribute('open');
+}
+
+function calendarShareFile() {
+  try {
+    return createCalendarFile(selectedDate, events);
+  } catch {
+    return null;
+  }
+}
+
+function canShareCalendarFile(file = calendarShareFile()) {
+  if (!file || typeof navigator.canShare !== 'function' || typeof navigator.share !== 'function') return false;
+  try {
+    return navigator.canShare({ files: [file] });
+  } catch {
+    return false;
+  }
+}
+
+function renderGoogleCalendarLinks() {
+  const fragment = document.createDocumentFragment();
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  for (const event of [...events].sort((a, b) => a.start - b.start)) {
+    const item = document.createElement('li');
+    item.className = 'google-event-item';
+
+    const eventCopy = document.createElement('div');
+    eventCopy.className = 'google-event-copy';
+    const title = document.createElement('strong');
+    title.textContent = event.title;
+    const time = document.createElement('span');
+    time.textContent = eventTimeRange(event);
+    eventCopy.append(title, time);
+
+    const link = document.createElement('a');
+    link.className = 'button google-event-link';
+    link.href = googleCalendarUrl(selectedDate, event, timeZone);
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = 'Add';
+    link.setAttribute('aria-label', `Add ${event.title}, ${eventTimeRange(event)}, to Google Calendar`);
+    link.addEventListener('click', () => {
+      item.classList.add('opened');
+      link.textContent = 'Open again';
+      announce(`${event.title} opened in Google Calendar. Save it there, then return for the next item.`);
+    });
+
+    item.append(eventCopy, link);
+    fragment.append(item);
+  }
+  elements.googleEventList.replaceChildren(fragment);
+}
+
+function openCalendarDialog() {
   if (!events.length) {
-    announce('Add at least one event before exporting.');
-    elements.selectionHint.textContent = 'Add at least one event before exporting.';
+    announce('Add at least one event before opening calendar options.');
+    elements.selectionHint.textContent = 'Add at least one event before adding to a calendar.';
     return;
   }
+  renderGoogleCalendarLinks();
+  const canShare = canShareCalendarFile();
+  elements.shareCalendarButton.hidden = !canShare;
+  elements.calendarShareNote.hidden = canShare;
+  if (typeof elements.calendarDialog.showModal === 'function') elements.calendarDialog.showModal();
+  else elements.calendarDialog.setAttribute('open', '');
+}
+
+async function shareCalendarFile() {
+  const file = calendarShareFile();
+  if (!canShareCalendarFile(file)) {
+    elements.shareCalendarButton.hidden = true;
+    elements.calendarShareNote.hidden = false;
+    announce('File sharing is not supported in this browser. Use Download instead.');
+    return;
+  }
+  try {
+    await navigator.share({
+      files: [file],
+      title: 'Daily Planner schedule',
+      text: `My Daily Planner schedule for ${selectedDate}`,
+    });
+    announce('Calendar file shared.');
+  } catch (error) {
+    if (error?.name !== 'AbortError') announce('The calendar file could not be shared. Use Download instead.');
+  }
+}
+
+function downloadCalendarFile() {
   downloadCalendar(selectedDate, events);
-  announce(`${events.length} event${events.length === 1 ? '' : 's'} exported.`);
+  announce(`${events.length} event${events.length === 1 ? '' : 's'} downloaded.`);
 }
 
 elements.timeline.addEventListener('click', (clickEvent) => {
@@ -658,7 +750,11 @@ elements.deleteButton.addEventListener('drop', (event) => {
   nativeDragPayload = null;
 });
 elements.undoButton.addEventListener('click', undoDelete);
-elements.exportButton.addEventListener('click', exportDay);
+elements.exportButton.addEventListener('click', openCalendarDialog);
+elements.closeCalendarDialog.addEventListener('click', closeCalendarDialog);
+elements.doneCalendarDialog.addEventListener('click', closeCalendarDialog);
+elements.shareCalendarButton.addEventListener('click', shareCalendarFile);
+elements.downloadCalendarButton.addEventListener('click', downloadCalendarFile);
 elements.date.addEventListener('change', changeDate);
 elements.customName.addEventListener('input', updateCustomPreview);
 elements.customColor.addEventListener('input', updateCustomPreview);

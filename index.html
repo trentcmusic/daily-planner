@@ -10,7 +10,7 @@
     <meta name="description" content="A calm, flexible daily planner with 15-minute scheduling.">
     <link rel="manifest" href="./manifest.json">
     <link rel="apple-touch-icon" href="./icons/icon-192.png">
-    <link rel="stylesheet" href="./styles.css?v=5">
+    <link rel="stylesheet" href="./styles.css?v=6">
     <title>Daily Planner</title>
   </head>
   <body>
@@ -27,7 +27,7 @@
             <input id="planner-date" name="planner-date" type="date" aria-describedby="date-help">
           </label>
           <span id="date-help" class="sr-only">Past dates are unavailable.</span>
-          <button class="button button-primary" id="export-button" type="button">Export .ics</button>
+          <button class="button button-primary" id="export-button" type="button">Add to calendar</button>
         </div>
       </header>
 
@@ -100,11 +100,52 @@
       </form>
     </dialog>
 
+    <dialog class="calendar-dialog" id="calendar-dialog" aria-labelledby="calendar-dialog-title">
+      <div class="calendar-dialog-content">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">Take your plan with you</p>
+            <h2 id="calendar-dialog-title">Add to calendar</h2>
+          </div>
+          <button class="icon-button" id="close-calendar-dialog" type="button" aria-label="Close calendar options">×</button>
+        </div>
+
+        <section class="calendar-option calendar-option-google" aria-labelledby="google-calendar-title">
+          <div class="calendar-option-heading">
+            <div class="calendar-mark" aria-hidden="true">G</div>
+            <div>
+              <p class="calendar-kicker">Best on iPhone + Android</p>
+              <h3 id="google-calendar-title">Google Calendar</h3>
+            </div>
+          </div>
+          <p class="helper">Tap <strong>Add</strong> for each item. Google Calendar opens with everything filled in—save it, then return here for the next one.</p>
+          <ol class="google-event-list" id="google-event-list"></ol>
+        </section>
+
+        <section class="calendar-option" aria-labelledby="other-calendar-title">
+          <div>
+            <p class="calendar-kicker">Other calendar apps</p>
+            <h3 id="other-calendar-title">Use your phone’s share menu</h3>
+          </div>
+          <p class="helper">If your phone supports calendar-file sharing, choose your calendar app from the share sheet. Download remains available as a backup.</p>
+          <div class="calendar-fallback-actions">
+            <button class="button button-primary" id="share-calendar-button" type="button">Share calendar file</button>
+            <button class="button" id="download-calendar-button" type="button">Download .ics</button>
+          </div>
+          <p class="calendar-share-note" id="calendar-share-note" hidden>Your browser does not offer file sharing here; use Download instead.</p>
+        </section>
+
+        <div class="dialog-actions">
+          <button class="button" id="done-calendar-dialog" type="button">Done</button>
+        </div>
+      </div>
+    </dialog>
+
     <div class="toast" id="toast" role="status" aria-live="polite" hidden>
       <span id="toast-message">Event deleted.</span>
       <button id="undo-button" type="button">Undo</button>
     </div>
     <div class="live-region sr-only" id="live-region" aria-live="assertive"></div>
-    <script type="module" src="./js/app.js?v=8"></script>
+    <script type="module" src="./js/app.js?v=9"></script>
   </body>
 </html>

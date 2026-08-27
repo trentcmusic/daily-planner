@@ -17,7 +17,8 @@ An installable, offline-capable daily planner designed for low-friction adjustme
 - Per-date schedules saved in the browser
 - Past dates disabled
 - Delete with a 7-second Undo option
-- `.ics` export named `YYYYMMDD_schedule.ics`
+- Mobile-friendly calendar handoff with a prefilled Google Calendar link for each scheduled item
+- Native calendar-file sharing when the phone/browser supports it, with `.ics` download as a fallback
 - Keyboard movement, resizing, and deletion
 - Offline use after the first successful visit
 
