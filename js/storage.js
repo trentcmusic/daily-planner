@@ -4,6 +4,9 @@ const STORAGE_KEY = 'adhd-daily-planner-v1';
 const STORE_VERSION = 2;
 const CUSTOM_ACTIONS_LEGACY_KEY = 'adhd-daily-planner-custom-actions-v1';
 const CUSTOM_ACTIONS_MIGRATION_KEY = 'adhd-daily-planner-custom-actions-profile-migration-v2';
+const PROFILE_IDS = ['trent', 'diane', 'joint'];
+let storageChangeListener = null;
+let suppressChangeNotifications = false;
 
 function customActionsKey(profile) {
   return `${CUSTOM_ACTIONS_LEGACY_KEY}-${profile}`;
@@ -76,6 +79,15 @@ function writeStore(store) {
   }
 }
 
+function notifyStorageChange(change) {
+  if (suppressChangeNotifications || typeof storageChangeListener !== 'function') return;
+  try {
+    storageChangeListener(change);
+  } catch {
+    // Cloud synchronization must never interrupt local planner saves.
+  }
+}
+
 function profileDays(store, profile) {
   if (!store.profiles[profile] || typeof store.profiles[profile] !== 'object') store.profiles[profile] = { days: {} };
   if (!store.profiles[profile].days || typeof store.profiles[profile].days !== 'object') store.profiles[profile].days = {};
@@ -110,7 +122,9 @@ export function saveDay(profile, date, events) {
   const store = readStore();
   claimLegacyDays(store, profile);
   profileDays(store, profile)[date] = events;
-  return writeStore(store);
+  const saved = writeStore(store);
+  if (saved) notifyStorageChange({ type: 'day', profile, date, events: structuredCloneSafe(events) });
+  return saved;
 }
 
 export function loadCustomActions(profile) {
@@ -125,9 +139,56 @@ export function loadCustomActions(profile) {
 export function saveCustomActions(profile, actions) {
   migrateCustomActions();
   try {
-    localStorage.setItem(customActionsKey(profile), JSON.stringify(Array.isArray(actions) ? actions : []));
+    const safeActions = Array.isArray(actions) ? actions : [];
+    localStorage.setItem(customActionsKey(profile), JSON.stringify(safeActions));
+    notifyStorageChange({ type: 'actions', profile, actions: structuredCloneSafe(safeActions) });
     return true;
   } catch {
     return false;
   }
+}
+
+function structuredCloneSafe(value) {
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return [];
+  }
+}
+
+export function setStorageChangeListener(listener) {
+  storageChangeListener = typeof listener === 'function' ? listener : null;
+}
+
+export function applySyncedDay(profile, date, events) {
+  suppressChangeNotifications = true;
+  try {
+    return saveDay(profile, date, events);
+  } finally {
+    suppressChangeNotifications = false;
+  }
+}
+
+export function applySyncedCustomActions(profile, actions) {
+  suppressChangeNotifications = true;
+  try {
+    return saveCustomActions(profile, actions);
+  } finally {
+    suppressChangeNotifications = false;
+  }
+}
+
+export function exportLocalSnapshot() {
+  const store = readStore();
+  const claimedProfile = PROFILE_IDS.find((profile) => Object.keys(profileDays(store, profile)).length) || 'trent';
+  if (claimLegacyDays(store, claimedProfile)) writeStore(store);
+  const days = [];
+  const actions = [];
+  for (const profile of PROFILE_IDS) {
+    for (const [date, events] of Object.entries(profileDays(store, profile))) {
+      if (Array.isArray(events)) days.push({ profile, date, events: structuredCloneSafe(events) });
+    }
+    actions.push({ profile, actions: structuredCloneSafe(loadCustomActions(profile)) });
+  }
+  return { days, actions };
 }

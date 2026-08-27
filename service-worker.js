@@ -1,13 +1,16 @@
-const CACHE_NAME = 'daily-planner-v15';
+const CACHE_NAME = 'daily-planner-v16';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=11',
+  './styles.css?v=12',
   './manifest.json',
-  './js/app.js?v=14',
+  './js/app.js?v=15',
   './js/config.js?v=3',
   './js/planner-model.js?v=3',
-  './js/storage.js?v=5',
+  './js/storage.js?v=6',
+  './js/sync.js?v=1',
+  './js/sync-model.js?v=1',
+  './js/supabase-config.js?v=1',
   './js/ics.js?v=5',
   './assets/iridescent-background.jpg',
   './icons/icon-192.png',

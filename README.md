@@ -10,7 +10,9 @@ An installable, offline-capable daily planner designed for low-friction adjustme
 - Compact landscape action buttons and a schedule that never scrolls sideways
 - Custom actions with editable names and colors, plus bank deletion that preserves scheduled events
 - A Trent/Diane/Joint home chooser with separate, bookmarkable planner views
-- Separate saved schedules and custom action banks for Trent, Diane, and Joint on the device
+- Separate saved schedules and custom action banks for Trent, Diane, and Joint
+- Optional passwordless cloud sync across phones, installed PWAs, and desktop browsers
+- Shared-planner invite codes, live updates, offline saves, and a safe one-time local-data merge
 - A full 24-hour schedule in 15-minute increments
 - Today opens at the nearest current hour; upcoming dates open at 6:00 AM
 - Desktop mouse drag/drop, mobile tap-to-place, and 10-minute scheduled-event movement from a dedicated mobile move grip
@@ -36,6 +38,16 @@ An installable, offline-capable daily planner designed for low-friction adjustme
 Upload all files and folders in this project to the same location that currently contains your Pages `index.html`. Keep the `js` and `icons` folders intact.
 
 In the repository, open **Settings → Pages** and confirm Pages deploys from the branch and folder where these files live. The PWA uses relative paths, so it works from a repository subpath such as `https://username.github.io/daily-planner/`.
+
+## Turn on cloud sync
+
+1. Create a Supabase project.
+2. In its SQL editor, run [`supabase/schema.sql`](./supabase/schema.sql).
+3. In **Authentication → URL Configuration**, set the Site URL to your GitHub Pages URL and add the same URL with `**` as an allowed redirect, for example `https://username.github.io/daily-planner/**`.
+4. Copy the project URL and public publishable key into [`js/supabase-config.js`](./js/supabase-config.js). Never put a secret or service-role key in browser code.
+5. Publish the changed files. Open **Sync**, email yourself a sign-in link, and create the shared planner. The second person signs in with their own email and joins using the displayed invite code.
+
+The first connection merges browser data into the cloud. A pre-merge backup remains in that browser's local storage. Local edits continue to save immediately and queue for retry when the connection returns.
 
 ## Install on iPhone
 
