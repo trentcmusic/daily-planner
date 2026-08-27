@@ -1,6 +1,6 @@
 import { CATEGORIES, DAY_MINUTES, DEFAULT_DURATION_MINUTES, MOVE_INCREMENT_MINUTES, RESIZE_INCREMENT_MINUTES, SLOT_MINUTES, SLOTS_PER_DAY, contrastText, removeCustomCategory } from './config.js?v=3';
 import { canPlace, clamp, eventTimeRange, formatMinutes, formatSlot, makeEvent, maximumDuration, snappedMoveStart, startingTimelineSlot } from './planner-model.js?v=3';
-import { loadDay, saveDay } from './storage.js?v=4';
+import { loadCustomActions, loadDay, saveCustomActions, saveDay } from './storage.js?v=5';
 import { createCalendarFile, downloadCalendar, googleCalendarUrl } from './ics.js?v=4';
 
 const PROFILES = {
@@ -25,7 +25,6 @@ const elements = {
   exportButton: document.querySelector('#export-button'),
   openPalette: document.querySelector('#open-palette'),
   closePalette: document.querySelector('#close-palette'),
-  paletteScrollbar: document.querySelector('#palette-scrollbar'),
   customDialog: document.querySelector('#custom-action-dialog'),
   customForm: document.querySelector('#custom-action-form'),
   customName: document.querySelector('#custom-action-name'),
@@ -61,16 +60,9 @@ let suppressClick = false;
 let nativeDragPayload = null;
 let customCategories = [];
 let editingCustomId = null;
-let paletteScrollControl = null;
 let calendarExportDate = null;
 let calendarExportEvents = [];
 let activeProfile = PROFILES[requestedProfile] || null;
-
-const CUSTOM_ACTIONS_LEGACY_KEY = 'adhd-daily-planner-custom-actions-v1';
-
-function customActionsKey() {
-  return `${CUSTOM_ACTIONS_LEGACY_KEY}-${activeProfile.id}`;
-}
 
 function localDateString(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -106,10 +98,7 @@ function eventById(id) {
 
 function loadCustomCategories() {
   try {
-    const profileKey = customActionsKey();
-    const profileValue = localStorage.getItem(profileKey);
-    const stored = JSON.parse(profileValue ?? localStorage.getItem(CUSTOM_ACTIONS_LEGACY_KEY) ?? '[]');
-    if (profileValue == null && Array.isArray(stored)) localStorage.setItem(profileKey, JSON.stringify(stored));
+    const stored = loadCustomActions(activeProfile.id);
     if (!Array.isArray(stored)) return [];
     return stored
       .filter((category) => category && typeof category.name === 'string' && /^#[0-9a-f]{6}$/i.test(category.color))
@@ -127,13 +116,11 @@ function loadCustomCategories() {
 }
 
 function saveCustomCategories() {
-  try {
-    localStorage.setItem(customActionsKey(), JSON.stringify(customCategories));
-    return true;
-  } catch {
+  if (!saveCustomActions(activeProfile.id, customCategories)) {
     announce('Your custom action works now, but this browser could not save it for later.');
     return false;
   }
+  return true;
 }
 
 function createActionCard(category) {
@@ -157,7 +144,9 @@ function createActionCard(category) {
     event.dataTransfer.setData('text/plain', category.name);
   });
   card.addEventListener('dragend', clearDropTarget);
-  card.addEventListener('pointerdown', (event) => beginPointerDrag(event, { type: 'category', category }, card));
+  card.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'touch') beginPointerDrag(event, { type: 'category', category }, card);
+  });
   return card;
 }
 
@@ -185,7 +174,6 @@ function renderPalette() {
   customButton.textContent = '＋ Create custom action';
   customButton.addEventListener('click', () => openCustomActionEditor());
   elements.palette.append(customButton);
-  requestAnimationFrame(() => paletteScrollControl?.sync());
 }
 
 function updateCustomPreview() {
@@ -256,76 +244,6 @@ function saveCustomAction(formEvent) {
   closeCustomActionEditor();
   elements.palettePanel.classList.remove('open');
   announce(`${category.name} is ready. Tap a time in the schedule to place it.`);
-}
-
-function wireVisibleScrollbar(container, rail) {
-  const thumb = rail.querySelector('.visible-scrollbar-thumb');
-  let dragging = null;
-
-  function sync() {
-    const trackHeight = rail.clientHeight;
-    if (!trackHeight) return;
-    const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
-    const scrollable = maximumScroll > 1;
-    rail.classList.toggle('inactive', !scrollable);
-    rail.setAttribute('aria-disabled', String(!scrollable));
-    const thumbHeight = scrollable
-      ? Math.max(48, Math.min(trackHeight, trackHeight * (container.clientHeight / container.scrollHeight)))
-      : trackHeight;
-    const travel = Math.max(0, trackHeight - thumbHeight);
-    const top = scrollable ? (container.scrollTop / maximumScroll) * travel : 0;
-    thumb.style.height = `${thumbHeight}px`;
-    thumb.style.transform = `translate3d(0, ${top}px, 0)`;
-    rail.setAttribute('aria-valuenow', String(scrollable ? Math.round((container.scrollTop / maximumScroll) * 100) : 0));
-  }
-
-  function startDrag(pointerEvent) {
-    const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
-    if (!maximumScroll) return;
-    pointerEvent.preventDefault();
-    rail.setPointerCapture?.(pointerEvent.pointerId);
-    const railBounds = rail.getBoundingClientRect();
-    const thumbHeight = thumb.offsetHeight;
-    const travel = Math.max(1, railBounds.height - thumbHeight);
-    if (pointerEvent.target !== thumb) {
-      const targetTop = clamp(pointerEvent.clientY - railBounds.top - (thumbHeight / 2), 0, travel);
-      container.scrollTop = (targetTop / travel) * maximumScroll;
-    }
-    dragging = { pointerId: pointerEvent.pointerId, startY: pointerEvent.clientY, startScroll: container.scrollTop, ratio: maximumScroll / travel };
-    sync();
-  }
-
-  function moveDrag(pointerEvent) {
-    if (!dragging || dragging.pointerId !== pointerEvent.pointerId) return;
-    pointerEvent.preventDefault();
-    container.scrollTop = dragging.startScroll + ((pointerEvent.clientY - dragging.startY) * dragging.ratio);
-  }
-
-  function endDrag(pointerEvent) {
-    if (!dragging || dragging.pointerId !== pointerEvent.pointerId) return;
-    dragging = null;
-  }
-
-  rail.addEventListener('pointerdown', startDrag);
-  rail.addEventListener('pointermove', moveDrag);
-  rail.addEventListener('pointerup', endDrag);
-  rail.addEventListener('pointercancel', endDrag);
-  rail.addEventListener('keydown', (keyboardEvent) => {
-    const amount = keyboardEvent.key === 'PageDown' || keyboardEvent.key === 'PageUp' ? container.clientHeight * .85 : slotHeight();
-    if (keyboardEvent.key === 'ArrowDown' || keyboardEvent.key === 'PageDown') container.scrollBy({ top: amount, behavior: 'smooth' });
-    else if (keyboardEvent.key === 'ArrowUp' || keyboardEvent.key === 'PageUp') container.scrollBy({ top: -amount, behavior: 'smooth' });
-    else if (keyboardEvent.key === 'Home') container.scrollTo({ top: 0, behavior: 'smooth' });
-    else if (keyboardEvent.key === 'End') container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-    else return;
-    keyboardEvent.preventDefault();
-  });
-  container.addEventListener('scroll', sync, { passive: true });
-  if ('ResizeObserver' in window) {
-    const observer = new ResizeObserver(sync);
-    observer.observe(container);
-    if (container.firstElementChild) observer.observe(container.firstElementChild);
-  } else window.addEventListener('resize', sync);
-  return { sync };
 }
 
 function renderTimeline() {
@@ -866,7 +784,6 @@ elements.cancelCustomAction.addEventListener('click', closeCustomActionEditor);
 elements.deleteCustomAction.addEventListener('click', deleteCustomAction);
 elements.openPalette.addEventListener('click', () => {
   elements.palettePanel.classList.add('open');
-  requestAnimationFrame(() => paletteScrollControl?.sync());
 });
 elements.closePalette.addEventListener('click', () => elements.palettePanel.classList.remove('open'));
 window.addEventListener('keydown', (event) => {
@@ -886,7 +803,6 @@ function initialize() {
   selectedDate = today;
   events = activeProfile ? loadDay(activeProfile.id, selectedDate) : [];
   customCategories = activeProfile ? loadCustomCategories() : [];
-  paletteScrollControl = wireVisibleScrollbar(elements.paletteContent, elements.paletteScrollbar);
   renderPalette();
   renderTimeline();
   renderEvents();
@@ -894,7 +810,6 @@ function initialize() {
   updateProfileUi();
   requestAnimationFrame(() => {
     scrollTimelineToStart(selectedDate);
-    paletteScrollControl.sync();
     if (!activeProfile) showProfileDialog();
   });
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./service-worker.js').catch(() => {});

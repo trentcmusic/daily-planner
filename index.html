@@ -10,7 +10,7 @@
     <meta name="description" content="A calm, flexible daily planner with 15-minute scheduling.">
     <link rel="manifest" href="./manifest.json">
     <link rel="apple-touch-icon" href="./icons/icon-192.png">
-    <link rel="stylesheet" href="./styles.css?v=8">
+    <link rel="stylesheet" href="./styles.css?v=9">
     <title>Daily Planner</title>
   </head>
   <body>
@@ -41,11 +41,8 @@
               </div>
               <button class="icon-button mobile-only" id="close-palette" type="button" aria-label="Close actions">×</button>
             </div>
-            <p class="helper">Drag an action onto the day, or tap it and then tap a time.</p>
+            <p class="helper">On desktop, drag an action onto the day. On mobile, tap it, then tap a time.</p>
             <div class="palette" id="palette"></div>
-          </div>
-          <div class="visible-scrollbar palette-scrollbar" id="palette-scrollbar" role="scrollbar" aria-label="Scroll actions" aria-controls="palette-content" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
-            <div class="visible-scrollbar-thumb"></div>
           </div>
         </aside>
 
@@ -168,6 +165,6 @@
       <button id="undo-button" type="button">Undo</button>
     </div>
     <div class="live-region sr-only" id="live-region" aria-live="assertive"></div>
-    <script type="module" src="./js/app.js?v=11"></script>
+    <script type="module" src="./js/app.js?v=12"></script>
   </body>
 </html>

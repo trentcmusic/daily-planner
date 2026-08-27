@@ -1,13 +1,13 @@
-const CACHE_NAME = 'daily-planner-v12';
+const CACHE_NAME = 'daily-planner-v13';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=8',
+  './styles.css?v=9',
   './manifest.json',
-  './js/app.js?v=11',
+  './js/app.js?v=12',
   './js/config.js?v=3',
   './js/planner-model.js?v=3',
-  './js/storage.js?v=4',
+  './js/storage.js?v=5',
   './js/ics.js?v=4',
   './assets/iridescent-background.jpg',
   './icons/icon-192.png',

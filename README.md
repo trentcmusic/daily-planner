@@ -6,13 +6,13 @@ An installable, offline-capable daily planner designed for low-friction adjustme
 
 - Original color-coded action palette and categories
 - Supplied iridescent image background with translucent, high-readability planner panels
-- A touch-friendly actions rail plus natural finger scrolling in the daily schedule
+- Natural finger scrolling in both the action bank and daily schedule, with no custom scroll rails
 - Custom actions with editable names and colors, plus bank deletion that preserves scheduled events
 - A Trent/Diane home chooser with separate, bookmarkable planner views
 - Separate saved schedules and custom action banks for each person on the device
 - A full 24-hour schedule in 15-minute increments
 - Today opens at the nearest current hour; upcoming dates open at 6:00 AM
-- Mouse drag/drop and touch drag/drop with 10-minute movement increments
+- Desktop mouse drag/drop, mobile tap-to-place, and 10-minute scheduled-event movement
 - Tap an action, then tap a time as an easier mobile alternative
 - Move and repeatedly resize events up to 8 hours
 - Automatic overlap prevention

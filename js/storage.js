@@ -2,6 +2,41 @@ import { canPlace, normalizedEvent } from './planner-model.js?v=3';
 
 const STORAGE_KEY = 'adhd-daily-planner-v1';
 const STORE_VERSION = 2;
+const CUSTOM_ACTIONS_LEGACY_KEY = 'adhd-daily-planner-custom-actions-v1';
+const CUSTOM_ACTIONS_MIGRATION_KEY = 'adhd-daily-planner-custom-actions-profile-migration-v2';
+
+function customActionsKey(profile) {
+  return `${CUSTOM_ACTIONS_LEGACY_KEY}-${profile}`;
+}
+
+function parsedArray(value) {
+  try {
+    const parsed = JSON.parse(value || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function migrateCustomActions() {
+  try {
+    if (localStorage.getItem(CUSTOM_ACTIONS_MIGRATION_KEY) === 'done') return;
+    const legacyValue = localStorage.getItem(CUSTOM_ACTIONS_LEGACY_KEY);
+    if (legacyValue != null) {
+      const legacyActions = parsedArray(legacyValue);
+      const legacyIds = new Set(legacyActions.map((action) => String(action?.id || '')).filter(Boolean));
+      const trentKey = customActionsKey('trent');
+      const dianeKey = customActionsKey('diane');
+      if (localStorage.getItem(trentKey) == null) localStorage.setItem(trentKey, JSON.stringify(legacyActions));
+      const dianeValue = localStorage.getItem(dianeKey);
+      const dianeActions = parsedArray(dianeValue).filter((action) => !legacyIds.has(String(action?.id || '')));
+      localStorage.setItem(dianeKey, JSON.stringify(dianeActions));
+    }
+    localStorage.setItem(CUSTOM_ACTIONS_MIGRATION_KEY, 'done');
+  } catch {
+    // Saving is best-effort; callers still receive an empty or profile-local bank.
+  }
+}
 
 function emptyStore() {
   return { version: STORE_VERSION, profiles: {}, legacyDays: {} };
@@ -76,4 +111,23 @@ export function saveDay(profile, date, events) {
   claimLegacyDays(store, profile);
   profileDays(store, profile)[date] = events;
   return writeStore(store);
+}
+
+export function loadCustomActions(profile) {
+  migrateCustomActions();
+  try {
+    return parsedArray(localStorage.getItem(customActionsKey(profile)));
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomActions(profile, actions) {
+  migrateCustomActions();
+  try {
+    localStorage.setItem(customActionsKey(profile), JSON.stringify(Array.isArray(actions) ? actions : []));
+    return true;
+  } catch {
+    return false;
+  }
 }
