@@ -1,6 +1,10 @@
 export const SLOT_MINUTES = 15;
 export const SLOTS_PER_DAY = 96;
-export const MAX_DURATION_SLOTS = 32;
+export const DAY_MINUTES = 24 * 60;
+export const DEFAULT_DURATION_MINUTES = 15;
+export const MOVE_INCREMENT_MINUTES = 10;
+export const RESIZE_INCREMENT_MINUTES = 15;
+export const MAX_DURATION_MINUTES = 8 * 60;
 
 export function contrastText(hexColor) {
   if (!/^#[0-9a-f]{6}$/i.test(hexColor)) return '#ffffff';

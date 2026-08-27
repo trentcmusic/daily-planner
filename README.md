@@ -8,9 +8,11 @@ An installable, offline-capable daily planner designed for low-friction adjustme
 - Supplied iridescent image background with translucent, high-readability planner panels
 - A touch-friendly actions rail plus natural finger scrolling in the daily schedule
 - Custom actions with editable names and colors, plus bank deletion that preserves scheduled events
+- A Trent/Diane home chooser with separate, bookmarkable planner views
+- Separate saved schedules and custom action banks for each person on the device
 - A full 24-hour schedule in 15-minute increments
 - Today opens at the nearest current hour; upcoming dates open at 6:00 AM
-- Mouse drag/drop and touch drag/drop
+- Mouse drag/drop and touch drag/drop with 10-minute movement increments
 - Tap an action, then tap a time as an easier mobile alternative
 - Move and repeatedly resize events up to 8 hours
 - Automatic overlap prevention
@@ -18,7 +20,7 @@ An installable, offline-capable daily planner designed for low-friction adjustme
 - Past dates disabled
 - Delete with a 7-second Undo option
 - A compact Clear calendar control
-- Automatic schedule clearing after export and whenever the app reloads; custom actions remain saved
+- Schedules remain saved after reloads and exports until Clear calendar is chosen
 - Mobile-friendly calendar handoff with a prefilled Google Calendar link for each scheduled item
 - Native calendar-file sharing when the phone/browser supports it, with `.ics` download as a fallback
 - Keyboard movement, resizing, and deletion

@@ -1,4 +1,4 @@
-import { MAX_DURATION_SLOTS, SLOT_MINUTES, SLOTS_PER_DAY } from './config.js?v=2';
+import { DAY_MINUTES, DEFAULT_DURATION_MINUTES, MAX_DURATION_MINUTES, MOVE_INCREMENT_MINUTES, SLOT_MINUTES, SLOTS_PER_DAY } from './config.js?v=3';
 
 export function clamp(value, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, value));
@@ -14,15 +14,15 @@ export function eventsOverlap(first, second) {
 
 export function canPlace(events, candidate, ignoredId = null) {
   if (!Number.isInteger(candidate.start) || !Number.isInteger(candidate.duration)) return false;
-  if (candidate.start < 0 || candidate.duration < 1 || eventEnd(candidate) > SLOTS_PER_DAY) return false;
+  if (candidate.start < 0 || candidate.duration < 1 || eventEnd(candidate) > DAY_MINUTES) return false;
   return !events.some((event) => event.id !== ignoredId && eventsOverlap(event, candidate));
 }
 
 export function maximumDuration(events, event) {
   const nextStart = events
     .filter((item) => item.id !== event.id && item.start > event.start)
-    .reduce((nearest, item) => Math.min(nearest, item.start), SLOTS_PER_DAY);
-  return Math.max(1, Math.min(MAX_DURATION_SLOTS, SLOTS_PER_DAY - event.start, nextStart - event.start));
+    .reduce((nearest, item) => Math.min(nearest, item.start), DAY_MINUTES);
+  return Math.max(1, Math.min(MAX_DURATION_MINUTES, DAY_MINUTES - event.start, nextStart - event.start));
 }
 
 export function nearestHourSlot(date) {
@@ -34,12 +34,19 @@ export function startingTimelineSlot(isCurrentDay, date) {
   return isCurrentDay ? nearestHourSlot(date) : 24;
 }
 
+export function snappedMoveStart(start, rawDeltaMinutes) {
+  return start + (Math.round(rawDeltaMinutes / MOVE_INCREMENT_MINUTES) * MOVE_INCREMENT_MINUTES);
+}
+
 export function minutesForSlot(slot) {
   return slot * SLOT_MINUTES;
 }
 
 export function formatSlot(slot) {
-  const totalMinutes = minutesForSlot(slot);
+  return formatMinutes(minutesForSlot(slot));
+}
+
+export function formatMinutes(totalMinutes) {
   const hour24 = Math.floor(totalMinutes / 60) % 24;
   const minutes = totalMinutes % 60;
   const hour12 = hour24 % 12 || 12;
@@ -47,7 +54,7 @@ export function formatSlot(slot) {
 }
 
 export function eventTimeRange(event) {
-  return `${formatSlot(event.start)} – ${formatSlot(eventEnd(event))}`;
+  return `${formatMinutes(event.start)} – ${formatMinutes(eventEnd(event))}`;
 }
 
 export function makeId() {
@@ -57,7 +64,7 @@ export function makeId() {
 
 export function makeEvent(category, start) {
   return {
-    id: makeId(), title: category.name, color: category.color, text: category.text || '#ffffff', start, duration: 1,
+    id: makeId(), title: category.name, color: category.color, text: category.text || '#ffffff', start, duration: DEFAULT_DURATION_MINUTES,
   };
 }
 
@@ -72,7 +79,7 @@ export function normalizedEvent(value) {
     color: /^#[0-9a-f]{6}$/i.test(value.color) ? value.color : '#5b57bd',
     text: /^#[0-9a-f]{6}$/i.test(value.text) ? value.text : '#ffffff',
     start,
-    duration: clamp(duration, 1, MAX_DURATION_SLOTS),
+    duration: clamp(duration, 1, MAX_DURATION_MINUTES),
   };
-  return event.start >= 0 && eventEnd(event) <= SLOTS_PER_DAY ? event : null;
+  return event.start >= 0 && eventEnd(event) <= DAY_MINUTES ? event : null;
 }

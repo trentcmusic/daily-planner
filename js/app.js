@@ -1,7 +1,13 @@
-import { CATEGORIES, SLOTS_PER_DAY, contrastText, removeCustomCategory } from './config.js?v=2';
-import { canPlace, clamp, eventTimeRange, formatSlot, makeEvent, maximumDuration, startingTimelineSlot } from './planner-model.js?v=2';
-import { clearAllDays, loadDay, saveDay } from './storage.js?v=3';
-import { createCalendarFile, downloadCalendar, googleCalendarUrl } from './ics.js?v=3';
+import { CATEGORIES, DAY_MINUTES, DEFAULT_DURATION_MINUTES, MOVE_INCREMENT_MINUTES, RESIZE_INCREMENT_MINUTES, SLOT_MINUTES, SLOTS_PER_DAY, contrastText, removeCustomCategory } from './config.js?v=3';
+import { canPlace, clamp, eventTimeRange, formatMinutes, formatSlot, makeEvent, maximumDuration, snappedMoveStart, startingTimelineSlot } from './planner-model.js?v=3';
+import { loadDay, saveDay } from './storage.js?v=4';
+import { createCalendarFile, downloadCalendar, googleCalendarUrl } from './ics.js?v=4';
+
+const PROFILES = {
+  trent: { id: 'trent', name: 'Trent' },
+  diane: { id: 'diane', name: 'Diane' },
+};
+const requestedProfile = new URLSearchParams(window.location.search).get('profile');
 
 const elements = {
   palette: document.querySelector('#palette'),
@@ -11,6 +17,8 @@ const elements = {
   timelineWrap: document.querySelector('#timeline-wrap'),
   date: document.querySelector('#planner-date'),
   friendlyDate: document.querySelector('#friendly-date'),
+  scheduleTitle: document.querySelector('#schedule-title'),
+  profileSwitch: document.querySelector('#profile-switch'),
   selectionHint: document.querySelector('#selection-hint'),
   deleteButton: document.querySelector('#trash-button'),
   clearCalendarButton: document.querySelector('#clear-calendar-button'),
@@ -33,6 +41,8 @@ const elements = {
   shareCalendarButton: document.querySelector('#share-calendar-button'),
   downloadCalendarButton: document.querySelector('#download-calendar-button'),
   calendarShareNote: document.querySelector('#calendar-share-note'),
+  profileDialog: document.querySelector('#profile-dialog'),
+  closeProfileDialog: document.querySelector('#close-profile-dialog'),
   toast: document.querySelector('#toast'),
   toastMessage: document.querySelector('#toast-message'),
   undoButton: document.querySelector('#undo-button'),
@@ -54,8 +64,13 @@ let editingCustomId = null;
 let paletteScrollControl = null;
 let calendarExportDate = null;
 let calendarExportEvents = [];
+let activeProfile = PROFILES[requestedProfile] || null;
 
-const CUSTOM_ACTIONS_KEY = 'adhd-daily-planner-custom-actions-v1';
+const CUSTOM_ACTIONS_LEGACY_KEY = 'adhd-daily-planner-custom-actions-v1';
+
+function customActionsKey() {
+  return `${CUSTOM_ACTIONS_LEGACY_KEY}-${activeProfile.id}`;
+}
 
 function localDateString(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -80,7 +95,7 @@ function slotHeight() {
 
 function saveAndRender(message = '') {
   events.sort((a, b) => a.start - b.start);
-  if (!saveDay(selectedDate, events)) announce('The schedule changed, but this browser could not save it for later.');
+  if (!saveDay(activeProfile.id, selectedDate, events)) announce('The schedule changed, but this browser could not save it for later.');
   renderEvents();
   if (message) announce(message);
 }
@@ -91,7 +106,10 @@ function eventById(id) {
 
 function loadCustomCategories() {
   try {
-    const stored = JSON.parse(localStorage.getItem(CUSTOM_ACTIONS_KEY) || '[]');
+    const profileKey = customActionsKey();
+    const profileValue = localStorage.getItem(profileKey);
+    const stored = JSON.parse(profileValue ?? localStorage.getItem(CUSTOM_ACTIONS_LEGACY_KEY) ?? '[]');
+    if (profileValue == null && Array.isArray(stored)) localStorage.setItem(profileKey, JSON.stringify(stored));
     if (!Array.isArray(stored)) return [];
     return stored
       .filter((category) => category && typeof category.name === 'string' && /^#[0-9a-f]{6}$/i.test(category.color))
@@ -110,7 +128,7 @@ function loadCustomCategories() {
 
 function saveCustomCategories() {
   try {
-    localStorage.setItem(CUSTOM_ACTIONS_KEY, JSON.stringify(customCategories));
+    localStorage.setItem(customActionsKey(), JSON.stringify(customCategories));
     return true;
   } catch {
     announce('Your custom action works now, but this browser could not save it for later.');
@@ -342,11 +360,11 @@ function renderEvents() {
     item.draggable = false;
     item.tabIndex = 0;
     item.setAttribute('role', 'button');
-    item.setAttribute('aria-label', `${event.title}, ${eventTimeRange(event)}. Drag to move; use the resize bar to change duration.`);
+    item.setAttribute('aria-label', `${event.title}, ${eventTimeRange(event)}. Drag or use arrow keys to move in 10-minute steps; use the resize bar to change duration.`);
     item.style.setProperty('--event-color', event.color);
     item.style.setProperty('--event-text', event.text);
-    item.style.top = `calc(var(--slot-height) * ${event.start})`;
-    item.style.height = `calc(var(--slot-height) * ${event.duration} - 3px)`;
+    item.style.top = `calc(var(--slot-height) * ${event.start / SLOT_MINUTES})`;
+    item.style.height = `calc(var(--slot-height) * ${event.duration / SLOT_MINUTES} - 3px)`;
     item.innerHTML = '<span class="event-title"></span><span class="event-time"></span><span class="resize-handle" role="separator" aria-label="Resize event" tabindex="-1"><span></span></span>';
     item.querySelector('.event-title').textContent = event.title;
     item.querySelector('.event-time').textContent = eventTimeRange(event);
@@ -402,7 +420,7 @@ function updateSelectionUi() {
   elements.deleteButton.disabled = !selected;
   elements.clearCalendarButton.disabled = events.length === 0;
   elements.selectionHint.textContent = selected
-    ? `${selected.title} • ${eventTimeRange(selected)} — drag to move or pull the white bar to resize`
+    ? `${selected.title} • ${eventTimeRange(selected)} — drag to move by 10 minutes or pull the white bar to resize`
     : selectedCategory
       ? `${selectedCategory.name} selected — tap a time to place it`
       : 'Nothing selected — choose an action or tap an event';
@@ -418,7 +436,7 @@ function addCategoryAt(category, start) {
   selectedCategory = null;
   selectedEventId = candidate.id;
   renderPalette();
-  saveAndRender(`${category.name} added at ${formatSlot(start)}.`);
+  saveAndRender(`${category.name} added at ${formatMinutes(start)}.`);
   return true;
 }
 
@@ -432,19 +450,37 @@ function moveEventTo(eventId, start) {
   }
   event.start = start;
   selectedEventId = event.id;
-  saveAndRender(`${event.title} moved to ${formatSlot(start)}.`);
+  saveAndRender(`${event.title} moved to ${formatMinutes(start)}.`);
   return true;
 }
 
-function slotFromPoint(clientX, clientY) {
-  const target = document.elementFromPoint(clientX, clientY);
-  const slot = target?.closest?.('.slot');
-  return slot && elements.timeline.contains(slot) ? Number(slot.dataset.slot) : null;
+function maximumStartForPayload(payload) {
+  const duration = payload.type === 'event' ? eventById(payload.eventId)?.duration : DEFAULT_DURATION_MINUTES;
+  return Math.floor((DAY_MINUTES - (duration || DEFAULT_DURATION_MINUTES)) / MOVE_INCREMENT_MINUTES) * MOVE_INCREMENT_MINUTES;
 }
 
-function setDropTarget(slot) {
+function minuteFromPoint(clientX, clientY, payload) {
+  const bounds = elements.timeline.getBoundingClientRect();
+  if (clientX < bounds.left || clientX > bounds.right || clientY < bounds.top || clientY > bounds.bottom) return null;
+  const rawMinutes = ((clientY - bounds.top) / slotHeight()) * SLOT_MINUTES;
+  const snapped = Math.round(rawMinutes / MOVE_INCREMENT_MINUTES) * MOVE_INCREMENT_MINUTES;
+  return clamp(snapped, 0, maximumStartForPayload(payload));
+}
+
+function minuteFromPointerDrag(pointerEvent) {
+  if (!pointerDrag) return null;
+  if (pointerDrag.payload.type !== 'event') return minuteFromPoint(pointerEvent.clientX, pointerEvent.clientY, pointerDrag.payload);
+  const bounds = elements.timeline.getBoundingClientRect();
+  if (pointerEvent.clientX < bounds.left || pointerEvent.clientX > bounds.right || pointerEvent.clientY < bounds.top || pointerEvent.clientY > bounds.bottom) return null;
+  const scrollDelta = elements.timelineWrap.scrollTop - pointerDrag.startScrollTop;
+  const rawDelta = ((pointerEvent.clientY - pointerDrag.startY + scrollDelta) / slotHeight()) * SLOT_MINUTES;
+  return clamp(snappedMoveStart(pointerDrag.originalStart, rawDelta), 0, maximumStartForPayload(pointerDrag.payload));
+}
+
+function setDropTarget(minute) {
   clearDropTarget();
-  if (slot == null) return;
+  if (minute == null) return;
+  const slot = Math.floor(minute / SLOT_MINUTES);
   const element = elements.timeline.querySelector(`.slot[data-slot="${slot}"]`);
   if (element) element.classList.add('drop-target');
 }
@@ -453,14 +489,24 @@ function clearDropTarget() {
   elements.timeline.querySelector('.slot.drop-target')?.classList.remove('drop-target');
 }
 
-function completeDrop(payload, slot) {
-  if (slot == null) return false;
-  return payload.type === 'category' ? addCategoryAt(payload.category, slot) : moveEventTo(payload.eventId, slot);
+function completeDrop(payload, minute) {
+  if (minute == null) return false;
+  return payload.type === 'category' ? addCategoryAt(payload.category, minute) : moveEventTo(payload.eventId, minute);
 }
 
 function beginPointerDrag(event, payload, source) {
   if (event.button !== 0 || resizeSession) return;
-  pointerDrag = { pointerId: event.pointerId, payload, source, startX: event.clientX, startY: event.clientY, started: false, ghost: null };
+  pointerDrag = {
+    pointerId: event.pointerId,
+    payload,
+    source,
+    startX: event.clientX,
+    startY: event.clientY,
+    startScrollTop: elements.timelineWrap.scrollTop,
+    originalStart: payload.type === 'event' ? eventById(payload.eventId)?.start || 0 : null,
+    started: false,
+    ghost: null,
+  };
   source.setPointerCapture?.(event.pointerId);
   source.addEventListener('pointermove', movePointerDrag);
   source.addEventListener('pointerup', endPointerDrag, { once: true });
@@ -483,7 +529,7 @@ function movePointerDrag(event) {
     document.body.classList.add('is-dragging');
   }
   pointerDrag.ghost.style.transform = `translate3d(${event.clientX + 12}px, ${event.clientY + 12}px, 0)`;
-  setDropTarget(slotFromPoint(event.clientX, event.clientY));
+  setDropTarget(minuteFromPointerDrag(event));
   const bounds = elements.timelineWrap.getBoundingClientRect();
   if (event.clientY < bounds.top + 60) elements.timelineWrap.scrollBy(0, -22);
   if (event.clientY > bounds.bottom - 60) elements.timelineWrap.scrollBy(0, 22);
@@ -499,7 +545,10 @@ function finishPointerDrag(event, cancelled) {
   document.body.classList.remove('is-dragging');
   const overTrash = !cancelled && document.elementFromPoint(event.clientX, event.clientY)?.closest('#trash-button');
   if (current.started && overTrash && current.payload.type === 'event') deleteEvent(current.payload.eventId);
-  else if (current.started && !cancelled) completeDrop(current.payload, slotFromPoint(event.clientX, event.clientY));
+  else if (current.started && !cancelled) {
+    pointerDrag = current;
+    completeDrop(current.payload, minuteFromPointerDrag(event));
+  }
   clearDropTarget();
   elements.deleteButton.classList.remove('drop-target');
   pointerDrag = null;
@@ -527,10 +576,10 @@ function startResize(pointerEvent, eventId, item) {
 function moveResize(pointerEvent) {
   if (!resizeSession || pointerEvent.pointerId !== resizeSession.pointerId) return;
   pointerEvent.preventDefault();
-  const delta = Math.round((pointerEvent.clientY - resizeSession.startY) / slotHeight());
-  const duration = clamp(resizeSession.originalDuration + delta, 1, maximumDuration(events, resizeSession.event));
+  const delta = Math.round((pointerEvent.clientY - resizeSession.startY) / slotHeight()) * RESIZE_INCREMENT_MINUTES;
+  const duration = clamp(resizeSession.originalDuration + delta, RESIZE_INCREMENT_MINUTES, maximumDuration(events, resizeSession.event));
   resizeSession.draftDuration = duration;
-  resizeSession.item.style.height = `calc(var(--slot-height) * ${duration} - 3px)`;
+  resizeSession.item.style.height = `calc(var(--slot-height) * ${duration / SLOT_MINUTES} - 3px)`;
   resizeSession.item.querySelector('.event-time').textContent = eventTimeRange({ ...resizeSession.event, duration });
 }
 
@@ -552,7 +601,7 @@ function deleteEvent(eventId) {
   const index = events.findIndex((event) => event.id === eventId);
   if (index < 0) return;
   const [event] = events.splice(index, 1);
-  undoRecord = { date: selectedDate, event, index };
+  undoRecord = { profile: activeProfile.id, date: selectedDate, event, index };
   selectedEventId = null;
   saveAndRender(`${event.title} deleted.`);
   showUndo(`${event.title} deleted.`);
@@ -567,7 +616,7 @@ function showUndo(message) {
 
 function undoDelete() {
   if (!undoRecord) return;
-  if (undoRecord.date !== selectedDate || !canPlace(events, undoRecord.event)) {
+  if (undoRecord.profile !== activeProfile.id || undoRecord.date !== selectedDate || !canPlace(events, undoRecord.event)) {
     announce('Undo is no longer available because that time is occupied or the date changed.');
     elements.toast.hidden = true;
     undoRecord = null;
@@ -595,9 +644,9 @@ function handleEventKeydown(keyboardEvent, eventId) {
     keyboardEvent.preventDefault();
     const direction = keyboardEvent.key === 'ArrowUp' ? -1 : 1;
     if (keyboardEvent.shiftKey) {
-      event.duration = clamp(event.duration + direction, 1, maximumDuration(events, event));
+      event.duration = clamp(event.duration + (direction * RESIZE_INCREMENT_MINUTES), RESIZE_INCREMENT_MINUTES, maximumDuration(events, event));
       saveAndRender(`${event.title} resized to ${eventTimeRange(event)}.`);
-    } else moveEventTo(event.id, event.start + direction);
+    } else moveEventTo(event.id, snappedMoveStart(event.start, direction * MOVE_INCREMENT_MINUTES));
   }
 }
 
@@ -608,11 +657,33 @@ function updateDateHeading() {
   elements.friendlyDate.textContent = selectedDate === today ? 'Today' : new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'short', day: 'numeric' }).format(chosen);
 }
 
+function updateProfileUi() {
+  const name = activeProfile?.name || 'Choose person';
+  elements.profileSwitch.textContent = activeProfile ? `${name} · Switch` : name;
+  elements.scheduleTitle.textContent = activeProfile ? `${name}’s day` : 'Your day';
+  elements.closeProfileDialog.hidden = !activeProfile;
+  document.querySelector('#calendar-dialog-title').textContent = activeProfile ? `Add ${name}’s day to calendar` : 'Add to calendar';
+  document.title = activeProfile ? `${name} — Daily Planner` : 'Daily Planner';
+}
+
+function showProfileDialog() {
+  updateProfileUi();
+  if (typeof elements.profileDialog.showModal === 'function') {
+    if (!elements.profileDialog.open) elements.profileDialog.showModal();
+  } else elements.profileDialog.setAttribute('open', '');
+}
+
+function closeProfileDialog() {
+  if (!activeProfile) return;
+  if (typeof elements.profileDialog.close === 'function') elements.profileDialog.close();
+  else elements.profileDialog.removeAttribute('open');
+}
+
 function changeDate() {
   const today = localDateString(new Date());
   if (!elements.date.value || elements.date.value < today) elements.date.value = today;
   selectedDate = elements.date.value;
-  events = loadDay(selectedDate);
+  events = loadDay(activeProfile.id, selectedDate);
   selectedCategory = null;
   selectedEventId = null;
   elements.toast.hidden = true;
@@ -641,10 +712,6 @@ function clearCalendarManually() {
   }
   if (!window.confirm('Clear every item from this calendar?')) return;
   emptyCurrentCalendar('Calendar cleared.');
-}
-
-function clearCalendarAfterExport() {
-  if (events.length) emptyCurrentCalendar('Calendar cleared after export.');
 }
 
 function closeCalendarDialog() {
@@ -696,8 +763,7 @@ function renderGoogleCalendarLinks() {
     link.addEventListener('click', () => {
       item.classList.add('opened');
       link.textContent = 'Open again';
-      clearCalendarAfterExport();
-      announce(`${event.title} opened in Google Calendar. Your planner is clear; save the item there, then return for the next one.`);
+      announce(`${event.title} opened in Google Calendar. Save it there, then return for the next one.`);
     });
 
     item.append(eventCopy, link);
@@ -736,8 +802,7 @@ async function shareCalendarFile() {
       title: 'Daily Planner schedule',
       text: `My Daily Planner schedule for ${calendarExportDate}`,
     });
-    clearCalendarAfterExport();
-    announce('Calendar file shared and the planner was cleared.');
+    announce('Calendar file shared. Your planner is still saved here.');
   } catch (error) {
     if (error?.name !== 'AbortError') announce('The calendar file could not be shared. Use Download instead.');
   }
@@ -746,25 +811,24 @@ async function shareCalendarFile() {
 function downloadCalendarFile() {
   const exportedCount = calendarExportEvents.length;
   downloadCalendar(calendarExportDate, calendarExportEvents);
-  clearCalendarAfterExport();
-  announce(`${exportedCount} event${exportedCount === 1 ? '' : 's'} downloaded and the planner was cleared.`);
+  announce(`${exportedCount} event${exportedCount === 1 ? '' : 's'} downloaded. Your planner is still saved here.`);
 }
 
 elements.timeline.addEventListener('click', (clickEvent) => {
   if (suppressClick || clickEvent.target.closest('.scheduled-event')) return;
   const slot = clickEvent.target.closest('.slot');
-  if (slot && selectedCategory) addCategoryAt(selectedCategory, Number(slot.dataset.slot));
+  if (slot && selectedCategory) addCategoryAt(selectedCategory, Number(slot.dataset.slot) * SLOT_MINUTES);
 });
 elements.timeline.addEventListener('dragover', (event) => {
   if (!nativeDragPayload) return;
   event.preventDefault();
   event.dataTransfer.dropEffect = nativeDragPayload.type === 'category' ? 'copy' : 'move';
-  setDropTarget(slotFromPoint(event.clientX, event.clientY));
+  setDropTarget(minuteFromPoint(event.clientX, event.clientY, nativeDragPayload));
 });
 elements.timeline.addEventListener('dragleave', (event) => { if (!elements.timeline.contains(event.relatedTarget)) clearDropTarget(); });
 elements.timeline.addEventListener('drop', (event) => {
   event.preventDefault();
-  if (nativeDragPayload) completeDrop(nativeDragPayload, slotFromPoint(event.clientX, event.clientY));
+  if (nativeDragPayload) completeDrop(nativeDragPayload, minuteFromPoint(event.clientX, event.clientY, nativeDragPayload));
   nativeDragPayload = null;
   clearDropTarget();
 });
@@ -783,6 +847,11 @@ elements.deleteButton.addEventListener('drop', (event) => {
   nativeDragPayload = null;
 });
 elements.undoButton.addEventListener('click', undoDelete);
+elements.profileSwitch.addEventListener('click', showProfileDialog);
+elements.closeProfileDialog.addEventListener('click', closeProfileDialog);
+elements.profileDialog.addEventListener('cancel', (event) => {
+  if (!activeProfile) event.preventDefault();
+});
 elements.exportButton.addEventListener('click', openCalendarDialog);
 elements.closeCalendarDialog.addEventListener('click', closeCalendarDialog);
 elements.doneCalendarDialog.addEventListener('click', closeCalendarDialog);
@@ -815,17 +884,18 @@ function initialize() {
   elements.date.min = today;
   elements.date.value = today;
   selectedDate = today;
-  clearAllDays();
-  events = [];
-  customCategories = loadCustomCategories();
+  events = activeProfile ? loadDay(activeProfile.id, selectedDate) : [];
+  customCategories = activeProfile ? loadCustomCategories() : [];
   paletteScrollControl = wireVisibleScrollbar(elements.paletteContent, elements.paletteScrollbar);
   renderPalette();
   renderTimeline();
   renderEvents();
   updateDateHeading();
+  updateProfileUi();
   requestAnimationFrame(() => {
     scrollTimelineToStart(selectedDate);
     paletteScrollControl.sync();
+    if (!activeProfile) showProfileDialog();
   });
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./service-worker.js').catch(() => {});
 }

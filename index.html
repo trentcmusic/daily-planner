@@ -10,7 +10,7 @@
     <meta name="description" content="A calm, flexible daily planner with 15-minute scheduling.">
     <link rel="manifest" href="./manifest.json">
     <link rel="apple-touch-icon" href="./icons/icon-192.png">
-    <link rel="stylesheet" href="./styles.css?v=7">
+    <link rel="stylesheet" href="./styles.css?v=8">
     <title>Daily Planner</title>
   </head>
   <body>
@@ -54,6 +54,7 @@
             <div>
               <p class="eyebrow" id="friendly-date">Today</p>
               <h2 id="schedule-title">Your day</h2>
+              <button class="profile-switch" id="profile-switch" type="button">Choose person</button>
             </div>
             <div class="schedule-actions">
               <button class="button mobile-only" id="open-palette" type="button">＋ Add action</button>
@@ -70,6 +71,29 @@
         </section>
       </main>
     </div>
+
+    <dialog class="profile-dialog" id="profile-dialog" aria-labelledby="profile-dialog-title">
+      <div class="profile-dialog-content">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">Two planners, one beautiful home</p>
+            <h2 id="profile-dialog-title">Who is planning today?</h2>
+          </div>
+          <button class="icon-button" id="close-profile-dialog" type="button" aria-label="Close person chooser" hidden>×</button>
+        </div>
+        <p class="helper">Choose a calendar. Each person’s schedule and custom actions stay separate on this device.</p>
+        <div class="profile-choices">
+          <a class="profile-choice profile-choice-trent" href="./?profile=trent">
+            <span class="profile-initial" aria-hidden="true">T</span>
+            <span><strong>Trent</strong><small>Open calendar</small></span>
+          </a>
+          <a class="profile-choice profile-choice-diane" href="./?profile=diane">
+            <span class="profile-initial" aria-hidden="true">D</span>
+            <span><strong>Diane</strong><small>Open calendar</small></span>
+          </a>
+        </div>
+      </div>
+    </dialog>
 
     <dialog class="custom-action-dialog" id="custom-action-dialog" aria-labelledby="custom-action-title">
       <form class="custom-action-form" id="custom-action-form">
@@ -116,7 +140,7 @@
               <h3 id="google-calendar-title">Google Calendar</h3>
             </div>
           </div>
-          <p class="helper">Tap <strong>Add</strong> for each item. Google Calendar opens with everything filled in—save it, then return here for the next one. Your planner clears after the first Add, but this list stays open so you can finish.</p>
+          <p class="helper">Tap <strong>Add</strong> for each item. Google Calendar opens with everything filled in—save it, then return here for the next one. Your planner remains saved in the app.</p>
           <ol class="google-event-list" id="google-event-list"></ol>
         </section>
 
@@ -144,6 +168,6 @@
       <button id="undo-button" type="button">Undo</button>
     </div>
     <div class="live-region sr-only" id="live-region" aria-live="assertive"></div>
-    <script type="module" src="./js/app.js?v=10"></script>
+    <script type="module" src="./js/app.js?v=11"></script>
   </body>
 </html>

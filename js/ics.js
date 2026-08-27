@@ -1,14 +1,12 @@
-import { SLOT_MINUTES } from './config.js?v=2';
-
 const pad = (value) => String(value).padStart(2, '0');
 
 function escapeText(value) {
   return String(value).replaceAll('\\', '\\\\').replaceAll('\n', '\\n').replaceAll(',', '\\,').replaceAll(';', '\\;');
 }
 
-function compactDateTime(date, slot) {
+function compactDateTime(date, minutes) {
   const [year, month, day] = date.split('-').map(Number);
-  const local = new Date(year, month - 1, day, 0, slot * SLOT_MINUTES, 0, 0);
+  const local = new Date(year, month - 1, day, 0, minutes, 0, 0);
   return `${local.getFullYear()}${pad(local.getMonth() + 1)}${pad(local.getDate())}T${pad(local.getHours())}${pad(local.getMinutes())}00`;
 }
 
