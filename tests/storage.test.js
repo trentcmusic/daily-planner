@@ -20,6 +20,16 @@ test('Trent and Diane keep separate saved schedules', () => {
   assert.equal(loadDay('diane', '2026-08-27')[0].title, 'Journaling');
 });
 
+test('the Joint Calendar keeps a third independent schedule', () => {
+  globalThis.localStorage = localStorageMock();
+  const event = { id: 'joint-one', title: 'Dinner together', color: '#675ec6', text: '#ffffff', start: 1080, duration: 60 };
+  saveDay('joint', '2026-08-27', [event]);
+
+  assert.equal(loadDay('joint', '2026-08-27')[0].title, 'Dinner together');
+  assert.deepEqual(loadDay('trent', '2026-08-27'), []);
+  assert.deepEqual(loadDay('diane', '2026-08-27'), []);
+});
+
 test('the first selected profile claims and converts a legacy schedule', () => {
   globalThis.localStorage = localStorageMock();
   localStorage.setItem('adhd-daily-planner-v1', JSON.stringify({

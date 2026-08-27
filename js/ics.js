@@ -29,7 +29,20 @@ export function buildCalendar(date, events) {
   const stamp = utcStamp();
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Daily Planner//ADHD-Friendly Planner//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
   for (const event of [...events].sort((a, b) => a.start - b.start)) {
-    lines.push('BEGIN:VEVENT', `UID:${escapeText(event.id)}@daily-planner.local`, `DTSTAMP:${stamp}`, `DTSTART:${compactDateTime(date, event.start)}`, `DTEND:${compactDateTime(date, event.start + event.duration)}`, `SUMMARY:${escapeText(event.title)}`, 'END:VEVENT');
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:${escapeText(event.id)}@daily-planner.local`,
+      `DTSTAMP:${stamp}`,
+      `DTSTART:${compactDateTime(date, event.start)}`,
+      `DTEND:${compactDateTime(date, event.start + event.duration)}`,
+      `SUMMARY:${escapeText(event.title)}`,
+      'BEGIN:VALARM',
+      'TRIGGER:-PT5M',
+      'ACTION:DISPLAY',
+      `DESCRIPTION:${escapeText(event.title)} starts in 5 minutes`,
+      'END:VALARM',
+      'END:VEVENT',
+    );
   }
   lines.push('END:VCALENDAR');
   return `${lines.join('\r\n')}\r\n`;

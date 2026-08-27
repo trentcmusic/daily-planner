@@ -130,6 +130,8 @@ h2 { font-size: 1.5rem; letter-spacing: -.025em; line-height: 1; }
 .schedule-toolbar { padding: 19px 20px 13px; border-bottom: 1px solid rgba(128,116,177,.17); }
 .profile-switch { display: inline-flex; margin-top: 7px; border: 0; padding: 0; background: transparent; color: #51468d; font-size: .82rem; font-weight: 800; text-decoration: underline; text-decoration-color: rgba(81,70,141,.34); text-underline-offset: 3px; cursor: pointer; }
 .profile-switch:hover, .profile-switch:focus-visible { color: var(--primary-dark); outline: 3px solid rgba(91,87,189,.22); outline-offset: 3px; border-radius: 5px; }
+.reminder-toggle { margin-left: 10px; text-decoration-style: dotted; }
+.reminder-toggle[aria-pressed="true"] { color: #226247; text-decoration-color: rgba(34,98,71,.42); }
 .helper { color: #555466; font-size: .88rem; line-height: 1.5; margin: 13px 0 17px; }
 .palette { display: grid; gap: 10px; }
 
@@ -260,7 +262,7 @@ h2 { font-size: 1.5rem; letter-spacing: -.025em; line-height: 1; }
 }
 body.is-dragging { overscroll-behavior: none; }
 
-.custom-action-dialog, .calendar-dialog, .profile-dialog {
+.custom-action-dialog, .calendar-dialog, .profile-dialog, .event-action-dialog {
   width: min(430px, calc(100vw - 28px));
   max-width: none;
   margin: auto;
@@ -272,7 +274,7 @@ body.is-dragging { overscroll-behavior: none; }
   box-shadow: 0 32px 90px rgba(30,27,61,.34), inset 0 1px white;
   backdrop-filter: blur(26px) saturate(120%);
 }
-.custom-action-dialog::backdrop, .calendar-dialog::backdrop, .profile-dialog::backdrop { background: rgba(32,31,55,.46); backdrop-filter: blur(9px); }
+.custom-action-dialog::backdrop, .calendar-dialog::backdrop, .profile-dialog::backdrop, .event-action-dialog::backdrop { background: rgba(32,31,55,.46); backdrop-filter: blur(9px); }
 .custom-action-form { display: grid; gap: 16px; padding: 22px; }
 .dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .field-label { display: grid; gap: 7px; color: #504c62; font-size: .78rem; font-weight: 800; letter-spacing: .035em; }
@@ -284,19 +286,28 @@ body.is-dragging { overscroll-behavior: none; }
 .delete-custom-action { margin-right: auto; }
 .delete-custom-action[hidden] { display: none; }
 
-.profile-dialog { width: min(520px, calc(100vw - 28px)); }
+.profile-dialog { width: min(560px, calc(100vw - 28px)); }
 .profile-dialog-content { display: grid; gap: 16px; padding: 24px; }
 .profile-dialog-content > .helper { margin: 0; }
 .profile-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .profile-choice { min-height: 112px; display: flex; align-items: center; gap: 13px; overflow: hidden; border: 1px solid rgba(255,255,255,.88); border-radius: 20px; padding: 16px; color: var(--ink); font-family: var(--body-font); text-decoration: none; box-shadow: 0 13px 30px rgba(42,37,84,.14), inset 0 1px rgba(255,255,255,.86); transition: transform .18s ease, box-shadow .18s ease; }
 .profile-choice-trent { background: linear-gradient(135deg, rgba(218,226,255,.91), rgba(212,246,248,.83)); }
 .profile-choice-diane { background: linear-gradient(135deg, rgba(251,218,239,.88), rgba(229,216,252,.88)); }
+.profile-choice-joint { grid-column: 1 / -1; min-height: 92px; background: linear-gradient(135deg, rgba(225,218,252,.90), rgba(204,237,246,.84), rgba(249,222,239,.80)); }
 .profile-choice:hover, .profile-choice:focus-visible { transform: translateY(-2px); outline: 3px solid rgba(91,87,189,.25); outline-offset: 2px; box-shadow: 0 17px 36px rgba(42,37,84,.19), inset 0 1px white; }
 .profile-choice > span:last-child { min-width: 0; display: grid; gap: 4px; }
 .profile-choice strong { font-size: 1.5rem; font-weight: 800; line-height: 1; }
 .profile-choice small { color: #5d5a6e; font-size: .76rem; font-weight: 600; }
 .profile-initial { width: 48px; height: 48px; flex: 0 0 48px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.72); border-radius: 15px; background: linear-gradient(145deg, #3a345d, #7368cc 58%, #42a7bd); color: white; font-size: 1.45rem; font-weight: 600; box-shadow: 0 9px 20px rgba(47,40,101,.25), inset 0 1px rgba(255,255,255,.46); }
 .profile-choice-diane .profile-initial { background: linear-gradient(145deg, #713f72, #bd65a7 56%, #7f75d3); }
+.profile-choice-joint .profile-initial { background: linear-gradient(145deg, #44396d, #675ec6 48%, #43a5ae); }
+
+.event-action-dialog { width: min(430px, calc(100vw - 28px)); }
+.event-action-content { display: grid; gap: 14px; padding: 22px; }
+.event-action-content > .helper { margin: 0; }
+.event-action-list { display: grid; gap: 10px; }
+.event-action-list .button { width: 100%; justify-content: center; }
+.event-action-note { min-height: 1.25em; color: var(--danger); font-size: .78rem; font-weight: 750; line-height: 1.4; }
 
 .calendar-dialog { width: min(580px, calc(100vw - 28px)); max-height: calc(100dvh - 28px); overflow: hidden; }
 .calendar-dialog-content { display: grid; gap: 16px; max-height: calc(100dvh - 28px); overflow-y: auto; padding: 22px; overscroll-behavior: contain; }
@@ -346,9 +357,10 @@ body.is-dragging { overscroll-behavior: none; }
   .scheduled-event { left: calc(var(--time-width) + 4px); right: clamp(64px, 19vw, 88px); gap: 0; padding: 5px 9px 13px 9px; }
   .event-title { font-size: .82rem; line-height: 1.05; }
   .event-time { font-size: .64rem; line-height: 1.05; }
-  .custom-action-dialog, .calendar-dialog, .profile-dialog { margin: auto; }
+  .custom-action-dialog, .calendar-dialog, .profile-dialog, .event-action-dialog { margin: auto; }
   .custom-action-form { padding: 20px; }
   .profile-dialog-content { padding: 20px; }
+  .event-action-content { padding: 20px; }
   .calendar-dialog-content { padding: 17px; }
   .calendar-option { padding: 14px; }
   .google-event-list { max-height: 34dvh; }
@@ -358,7 +370,7 @@ body.is-dragging { overscroll-behavior: none; }
 
 @media (max-width: 480px) {
   .profile-choices { grid-template-columns: 1fr; }
-  .profile-choice { min-height: 88px; }
+  .profile-choice, .profile-choice-joint { min-height: 88px; grid-column: auto; }
 }
 
 @media (max-width: 390px) {

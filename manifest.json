@@ -1,7 +1,7 @@
 {
   "name": "Daily Planner",
   "short_name": "Planner",
-  "description": "A calm, flexible daily planner for Trent and Diane.",
+  "description": "A calm, flexible daily planner for Trent, Diane, and their shared plans.",
   "id": "./",
   "start_url": "./",
   "scope": "./",
@@ -20,6 +20,12 @@
       "name": "Diane’s Planner",
       "short_name": "Diane",
       "url": "./?profile=diane",
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Joint Calendar",
+      "short_name": "Joint",
+      "url": "./?profile=joint",
       "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ],

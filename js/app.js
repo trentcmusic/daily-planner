@@ -1,11 +1,12 @@
 import { CATEGORIES, DAY_MINUTES, DEFAULT_DURATION_MINUTES, MOVE_INCREMENT_MINUTES, RESIZE_INCREMENT_MINUTES, SLOT_MINUTES, SLOTS_PER_DAY, contrastText, removeCustomCategory } from './config.js?v=3';
 import { canPlace, clamp, eventTimeRange, formatMinutes, formatSlot, makeEvent, maximumDuration, snappedMoveStart, startingTimelineSlot } from './planner-model.js?v=3';
 import { loadCustomActions, loadDay, saveCustomActions, saveDay } from './storage.js?v=5';
-import { createCalendarFile, downloadCalendar, googleCalendarUrl } from './ics.js?v=4';
+import { createCalendarFile, downloadCalendar, googleCalendarUrl } from './ics.js?v=5';
 
 const PROFILES = {
   trent: { id: 'trent', name: 'Trent' },
   diane: { id: 'diane', name: 'Diane' },
+  joint: { id: 'joint', name: 'Joint Calendar' },
 };
 const requestedProfile = new URLSearchParams(window.location.search).get('profile');
 
@@ -19,6 +20,7 @@ const elements = {
   friendlyDate: document.querySelector('#friendly-date'),
   scheduleTitle: document.querySelector('#schedule-title'),
   profileSwitch: document.querySelector('#profile-switch'),
+  reminderToggle: document.querySelector('#reminder-toggle'),
   selectionHint: document.querySelector('#selection-hint'),
   deleteButton: document.querySelector('#trash-button'),
   clearCalendarButton: document.querySelector('#clear-calendar-button'),
@@ -42,6 +44,13 @@ const elements = {
   calendarShareNote: document.querySelector('#calendar-share-note'),
   profileDialog: document.querySelector('#profile-dialog'),
   closeProfileDialog: document.querySelector('#close-profile-dialog'),
+  eventActionDialog: document.querySelector('#event-action-dialog'),
+  eventActionSummary: document.querySelector('#event-action-summary'),
+  eventActionNote: document.querySelector('#event-action-note'),
+  copyToJoint: document.querySelector('#copy-to-joint'),
+  moveToOtherPerson: document.querySelector('#move-to-other-person'),
+  closeEventActions: document.querySelector('#close-event-actions'),
+  cancelEventActions: document.querySelector('#cancel-event-actions'),
   toast: document.querySelector('#toast'),
   toastMessage: document.querySelector('#toast-message'),
   undoButton: document.querySelector('#undo-button'),
@@ -63,6 +72,13 @@ let editingCustomId = null;
 let calendarExportDate = null;
 let calendarExportEvents = [];
 let activeProfile = PROFILES[requestedProfile] || null;
+let eventActionId = null;
+let reminderInterval = null;
+
+const REMINDER_SETTING_KEY = 'adhd-daily-planner-reminders-enabled-v1';
+const SENT_REMINDERS_KEY = 'adhd-daily-planner-reminders-sent-v1';
+const REMINDER_LEAD_MINUTES = 5;
+const LONG_PRESS_MILLISECONDS = 600;
 
 function localDateString(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -89,6 +105,7 @@ function saveAndRender(message = '') {
   events.sort((a, b) => a.start - b.start);
   if (!saveDay(activeProfile.id, selectedDate, events)) announce('The schedule changed, but this browser could not save it for later.');
   renderEvents();
+  syncReminderLoop();
   if (message) announce(message);
 }
 
@@ -278,7 +295,7 @@ function renderEvents() {
     item.draggable = false;
     item.tabIndex = 0;
     item.setAttribute('role', 'button');
-    item.setAttribute('aria-label', `${event.title}, ${eventTimeRange(event)}. Drag or use arrow keys to move in 10-minute steps; use the resize bar to change duration.`);
+    item.setAttribute('aria-label', `${event.title}, ${eventTimeRange(event)}. Drag or use arrow keys to move in 10-minute steps; press and hold for calendar options; use the resize bar to change duration.`);
     item.style.setProperty('--event-color', event.color);
     item.style.setProperty('--event-text', event.text);
     item.style.top = `calc(var(--slot-height) * ${event.start / SLOT_MINUTES})`;
@@ -288,6 +305,10 @@ function renderEvents() {
     item.querySelector('.event-time').textContent = eventTimeRange(event);
     item.addEventListener('click', () => { if (!suppressClick) selectEvent(event.id); });
     item.addEventListener('keydown', (keyboardEvent) => handleEventKeydown(keyboardEvent, event.id));
+    item.addEventListener('contextmenu', (contextEvent) => {
+      contextEvent.preventDefault();
+      openEventActions(event.id);
+    });
     item.addEventListener('dragstart', (dragEvent) => {
       if (resizeSession) { dragEvent.preventDefault(); return; }
       selectedCategory = null;
@@ -333,15 +354,78 @@ function selectEvent(eventId) {
   if (selected) announce(`${selected.title} selected.`);
 }
 
+function closeEventActions() {
+  eventActionId = null;
+  elements.eventActionNote.textContent = '';
+  if (typeof elements.eventActionDialog.close === 'function') elements.eventActionDialog.close();
+  else elements.eventActionDialog.removeAttribute('open');
+}
+
+function openEventActions(eventId) {
+  const event = eventById(eventId);
+  if (!event) return;
+  eventActionId = event.id;
+  elements.eventActionSummary.textContent = `${event.title} · ${eventTimeRange(event)}`;
+  elements.eventActionNote.textContent = '';
+  elements.copyToJoint.hidden = activeProfile.id === 'joint';
+  elements.moveToOtherPerson.hidden = activeProfile.id === 'joint';
+  if (activeProfile.id !== 'joint') {
+    const otherProfile = activeProfile.id === 'trent' ? PROFILES.diane : PROFILES.trent;
+    elements.moveToOtherPerson.dataset.targetProfile = otherProfile.id;
+    elements.moveToOtherPerson.textContent = `Move to ${otherProfile.name} Calendar`;
+  }
+  if (typeof elements.eventActionDialog.showModal === 'function') {
+    if (!elements.eventActionDialog.open) elements.eventActionDialog.showModal();
+  } else elements.eventActionDialog.setAttribute('open', '');
+}
+
+function copyEventToProfile(targetProfileId, moveFromCurrent = false) {
+  const event = eventById(eventActionId);
+  const targetProfile = PROFILES[targetProfileId];
+  if (!event || !targetProfile) return false;
+  const targetEvents = loadDay(targetProfile.id, selectedDate);
+  const copiedEvent = {
+    ...event,
+    id: globalThis.crypto?.randomUUID?.() || `event-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  };
+  if (!canPlace(targetEvents, copiedEvent)) {
+    elements.eventActionNote.textContent = `${targetProfile.name} already has something during that time. Nothing was changed.`;
+    return false;
+  }
+  targetEvents.push(copiedEvent);
+  targetEvents.sort((first, second) => first.start - second.start);
+  if (!saveDay(targetProfile.id, selectedDate, targetEvents)) {
+    elements.eventActionNote.textContent = `This browser could not save the action to ${targetProfile.name}.`;
+    return false;
+  }
+  const title = event.title;
+  const time = eventTimeRange(event);
+  if (moveFromCurrent) {
+    events = events.filter((item) => item.id !== event.id);
+    selectedEventId = null;
+    if (!saveDay(activeProfile.id, selectedDate, events)) {
+      elements.eventActionNote.textContent = `The copy was saved to ${targetProfile.name}, but the original could not be removed here.`;
+      renderEvents();
+      syncReminderLoop();
+      return false;
+    }
+  }
+  closeEventActions();
+  renderEvents();
+  syncReminderLoop();
+  announce(`${title}, ${time}, was ${moveFromCurrent ? 'moved' : 'copied'} to ${targetProfile.name}.`);
+  return true;
+}
+
 function updateSelectionUi() {
   const selected = eventById(selectedEventId);
   elements.deleteButton.disabled = !selected;
   elements.clearCalendarButton.disabled = events.length === 0;
   elements.selectionHint.textContent = selected
-    ? `${selected.title} • ${eventTimeRange(selected)} — drag to move by 10 minutes or pull the white bar to resize`
+    ? `${selected.title} • ${eventTimeRange(selected)} — drag to move, or press and hold for calendar options`
     : selectedCategory
       ? `${selectedCategory.name} selected — tap a time to place it`
-      : 'Nothing selected — choose an action or tap an event';
+      : 'Nothing selected — choose an action, or press and hold a scheduled item for calendar options';
 }
 
 function addCategoryAt(category, start) {
@@ -424,7 +508,20 @@ function beginPointerDrag(event, payload, source) {
     originalStart: payload.type === 'event' ? eventById(payload.eventId)?.start || 0 : null,
     started: false,
     ghost: null,
+    longPressTimer: null,
   };
+  if (event.pointerType === 'touch' && payload.type === 'event') {
+    pointerDrag.longPressTimer = setTimeout(() => {
+      if (!pointerDrag || pointerDrag.pointerId !== event.pointerId || pointerDrag.started) return;
+      const current = pointerDrag;
+      current.source.removeEventListener('pointermove', movePointerDrag);
+      if (current.source.hasPointerCapture?.(current.pointerId)) current.source.releasePointerCapture(current.pointerId);
+      pointerDrag = null;
+      suppressClick = true;
+      openEventActions(current.payload.eventId);
+      setTimeout(() => { suppressClick = false; }, 800);
+    }, LONG_PRESS_MILLISECONDS);
+  }
   source.setPointerCapture?.(event.pointerId);
   source.addEventListener('pointermove', movePointerDrag);
   source.addEventListener('pointerup', endPointerDrag, { once: true });
@@ -435,6 +532,7 @@ function movePointerDrag(event) {
   if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
   const distance = Math.hypot(event.clientX - pointerDrag.startX, event.clientY - pointerDrag.startY);
   if (!pointerDrag.started && distance < 7) return;
+  clearTimeout(pointerDrag.longPressTimer);
   event.preventDefault();
   if (!pointerDrag.started) {
     pointerDrag.started = true;
@@ -457,6 +555,7 @@ function movePointerDrag(event) {
 function finishPointerDrag(event, cancelled) {
   if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
   const current = pointerDrag;
+  clearTimeout(current.longPressTimer);
   current.source.removeEventListener('pointermove', movePointerDrag);
   current.source.classList.remove('drag-source');
   current.ghost?.remove();
@@ -552,7 +651,10 @@ function undoDelete() {
 function handleEventKeydown(keyboardEvent, eventId) {
   const event = eventById(eventId);
   if (!event) return;
-  if (keyboardEvent.key === 'Delete' || keyboardEvent.key === 'Backspace') {
+  if (keyboardEvent.key === 'ContextMenu' || (keyboardEvent.shiftKey && keyboardEvent.key === 'F10')) {
+    keyboardEvent.preventDefault();
+    openEventActions(eventId);
+  } else if (keyboardEvent.key === 'Delete' || keyboardEvent.key === 'Backspace') {
     keyboardEvent.preventDefault();
     deleteEvent(eventId);
   } else if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
@@ -578,9 +680,9 @@ function updateDateHeading() {
 function updateProfileUi() {
   const name = activeProfile?.name || 'Choose person';
   elements.profileSwitch.textContent = activeProfile ? `${name} · Switch` : name;
-  elements.scheduleTitle.textContent = activeProfile ? `${name}’s day` : 'Your day';
+  elements.scheduleTitle.textContent = activeProfile?.id === 'joint' ? 'Our day' : activeProfile ? `${name}’s day` : 'Your day';
   elements.closeProfileDialog.hidden = !activeProfile;
-  document.querySelector('#calendar-dialog-title').textContent = activeProfile ? `Add ${name}’s day to calendar` : 'Add to calendar';
+  document.querySelector('#calendar-dialog-title').textContent = activeProfile?.id === 'joint' ? 'Add our day to calendar' : activeProfile ? `Add ${name}’s day to calendar` : 'Add to calendar';
   document.title = activeProfile ? `${name} — Daily Planner` : 'Daily Planner';
 }
 
@@ -595,6 +697,139 @@ function closeProfileDialog() {
   if (!activeProfile) return;
   if (typeof elements.profileDialog.close === 'function') elements.profileDialog.close();
   else elements.profileDialog.removeAttribute('open');
+}
+
+function reminderPreferenceEnabled() {
+  try {
+    return localStorage.getItem(REMINDER_SETTING_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function setReminderPreference(enabled) {
+  try {
+    localStorage.setItem(REMINDER_SETTING_KEY, String(enabled));
+  } catch {
+    // The current session can still show a status message when storage is unavailable.
+  }
+}
+
+function notificationPermissionGranted() {
+  return 'Notification' in window && Notification.permission === 'granted';
+}
+
+function remindersAreActive() {
+  return reminderPreferenceEnabled() && notificationPermissionGranted() && 'serviceWorker' in navigator;
+}
+
+function updateReminderUi() {
+  const enabled = remindersAreActive();
+  elements.reminderToggle.setAttribute('aria-pressed', String(enabled));
+  elements.reminderToggle.textContent = enabled ? '5-minute reminders on' : 'Enable 5-minute reminders';
+}
+
+function reportReminderStatus(message) {
+  elements.selectionHint.textContent = message;
+  announce(message);
+}
+
+function sentReminderKeys() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(SENT_REMINDERS_KEY) || '[]');
+    return new Set(Array.isArray(stored) ? stored : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function rememberReminder(key, sentKeys) {
+  sentKeys.add(key);
+  try {
+    localStorage.setItem(SENT_REMINDERS_KEY, JSON.stringify([...sentKeys].slice(-200)));
+  } catch {
+    // Duplicate suppression is best-effort when storage is unavailable.
+  }
+}
+
+function eventStartDate(date, startMinutes) {
+  const [year, month, day] = date.split('-').map(Number);
+  return new Date(year, month - 1, day, 0, startMinutes, 0, 0);
+}
+
+async function showReminderNotification(profile, event, key) {
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    await registration.showNotification(`${event.title} in 5 minutes`, {
+      body: `${profile.name} · Starts at ${formatMinutes(event.start)}`,
+      icon: './icons/icon-192.png',
+      badge: './icons/icon-192.png',
+      tag: key,
+      renotify: false,
+      data: { url: `./?profile=${profile.id}` },
+    });
+    return true;
+  } catch {
+    reportReminderStatus('The reminder could not be displayed. Check notification permissions for this planner.');
+    return false;
+  }
+}
+
+async function checkDueReminders() {
+  if (!remindersAreActive() || !activeProfile) return;
+  const now = new Date();
+  const today = localDateString(now);
+  const sentKeys = sentReminderKeys();
+  const profileIds = activeProfile.id === 'joint' ? ['joint'] : [activeProfile.id, 'joint'];
+  for (const profileId of profileIds) {
+    const profile = PROFILES[profileId];
+    for (const event of loadDay(profileId, today)) {
+      const start = eventStartDate(today, event.start);
+      const notifyAt = new Date(start.getTime() - (REMINDER_LEAD_MINUTES * 60 * 1000));
+      const key = `${profileId}:${today}:${event.id}:${event.start}`;
+      if (now >= notifyAt && now < start && !sentKeys.has(key)) {
+        if (await showReminderNotification(profile, event, key)) rememberReminder(key, sentKeys);
+      }
+    }
+  }
+}
+
+function syncReminderLoop() {
+  clearInterval(reminderInterval);
+  reminderInterval = null;
+  updateReminderUi();
+  if (!remindersAreActive()) return;
+  checkDueReminders();
+  reminderInterval = setInterval(checkDueReminders, 30000);
+}
+
+async function toggleReminders() {
+  if (remindersAreActive()) {
+    setReminderPreference(false);
+    syncReminderLoop();
+    reportReminderStatus('Five-minute planner reminders are off.');
+    return;
+  }
+  const isiPhoneOrIPad = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const isInstalled = window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
+  if (isiPhoneOrIPad && !isInstalled) {
+    reportReminderStatus('On iPhone or iPad, install the planner with Add to Home Screen before enabling notifications.');
+    return;
+  }
+  if (!window.isSecureContext || !('Notification' in window) || !('serviceWorker' in navigator)) {
+    reportReminderStatus('This browser does not support planner notifications. Calendar-file exports still include five-minute reminders.');
+    return;
+  }
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') {
+    setReminderPreference(false);
+    syncReminderLoop();
+    reportReminderStatus('Notifications were not allowed. You can enable them later in your browser or device settings.');
+    return;
+  }
+  setReminderPreference(true);
+  syncReminderLoop();
+  reportReminderStatus('Five-minute reminders are on while the planner is running.');
 }
 
 function changeDate() {
@@ -766,9 +1001,18 @@ elements.deleteButton.addEventListener('drop', (event) => {
 });
 elements.undoButton.addEventListener('click', undoDelete);
 elements.profileSwitch.addEventListener('click', showProfileDialog);
+elements.reminderToggle.addEventListener('click', toggleReminders);
 elements.closeProfileDialog.addEventListener('click', closeProfileDialog);
 elements.profileDialog.addEventListener('cancel', (event) => {
   if (!activeProfile) event.preventDefault();
+});
+elements.copyToJoint.addEventListener('click', () => copyEventToProfile('joint'));
+elements.moveToOtherPerson.addEventListener('click', () => copyEventToProfile(elements.moveToOtherPerson.dataset.targetProfile, true));
+elements.closeEventActions.addEventListener('click', closeEventActions);
+elements.cancelEventActions.addEventListener('click', closeEventActions);
+elements.eventActionDialog.addEventListener('cancel', (event) => {
+  event.preventDefault();
+  closeEventActions();
 });
 elements.exportButton.addEventListener('click', openCalendarDialog);
 elements.closeCalendarDialog.addEventListener('click', closeCalendarDialog);
@@ -786,6 +1030,9 @@ elements.openPalette.addEventListener('click', () => {
   elements.palettePanel.classList.add('open');
 });
 elements.closePalette.addEventListener('click', () => elements.palettePanel.classList.remove('open'));
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) checkDueReminders();
+});
 window.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     elements.palettePanel.classList.remove('open');
@@ -808,11 +1055,14 @@ function initialize() {
   renderEvents();
   updateDateHeading();
   updateProfileUi();
+  updateReminderUi();
   requestAnimationFrame(() => {
     scrollTimelineToStart(selectedDate);
     if (!activeProfile) showProfileDialog();
   });
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('./service-worker.js').then(syncReminderLoop).catch(updateReminderUi);
+  } else updateReminderUi();
 }
 
 initialize();

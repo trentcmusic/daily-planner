@@ -1,14 +1,14 @@
-const CACHE_NAME = 'daily-planner-v13';
+const CACHE_NAME = 'daily-planner-v14';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=9',
+  './styles.css?v=10',
   './manifest.json',
-  './js/app.js?v=12',
+  './js/app.js?v=13',
   './js/config.js?v=3',
   './js/planner-model.js?v=3',
   './js/storage.js?v=5',
-  './js/ics.js?v=4',
+  './js/ics.js?v=5',
   './assets/iridescent-background.jpg',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -40,5 +40,20 @@ self.addEventListener('fetch', (event) => {
       if (response.ok) caches.open(CACHE_NAME).then((cache) => cache.put(event.request, response.clone()));
       return response;
     }).catch(() => caches.match(event.request)),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = new URL(event.notification.data?.url || './', self.registration.scope).href;
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((openClients) => {
+      const existing = openClients.find((client) => new URL(client.url).pathname === new URL(targetUrl).pathname);
+      if (existing) {
+        existing.navigate(targetUrl);
+        return existing.focus();
+      }
+      return clients.openWindow(targetUrl);
+    }),
   );
 });
