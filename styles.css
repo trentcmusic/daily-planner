@@ -25,25 +25,15 @@ body {
   min-width: 320px;
   min-height: 100dvh;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 8% 7%, rgba(255, 170, 220, .78), transparent 29%),
-    radial-gradient(circle at 91% 11%, rgba(142, 226, 255, .80), transparent 31%),
-    radial-gradient(circle at 19% 83%, rgba(189, 169, 255, .76), transparent 34%),
-    radial-gradient(circle at 85% 78%, rgba(255, 221, 157, .67), transparent 30%),
-    linear-gradient(135deg, #f7ecff 0%, #e8f9ff 47%, #fff3ed 100%);
+  background-image:
+    linear-gradient(rgba(248, 250, 255, .10), rgba(248, 250, 255, .10)),
+    url("./assets/iridescent-background.jpg");
+  background-position: center, center;
+  background-repeat: no-repeat;
+  background-size: cover;
   background-attachment: fixed;
   color: var(--ink);
   -webkit-tap-highlight-color: transparent;
-}
-
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background: rgba(255, 255, 255, .20);
-  backdrop-filter: saturate(112%);
 }
 
 button, input { font: inherit; }
@@ -72,7 +62,7 @@ button { touch-action: manipulation; }
   justify-content: space-between;
   gap: 24px;
   padding: 18px clamp(18px, 4vw, 48px);
-  background: rgba(255,255,255,.80);
+  background: rgba(255,255,255,.72);
   border-bottom: 1px solid rgba(255, 255, 255, .78);
   position: sticky;
   top: 0;
@@ -180,8 +170,8 @@ h2 { font-size: 1.25rem; letter-spacing: -.02em; }
 .custom-action-button:hover, .custom-action-button:focus-visible { border-color: var(--primary); outline: 3px solid rgba(91,87,189,.22); outline-offset: 2px; }
 
 .selection-hint { min-height: 36px; padding: 9px 20px; color: #555a6d; font-size: .86rem; background: rgba(255,255,255,.64); border-bottom: 1px solid rgba(189,201,234,.68); }
-.timeline-scroller { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 20px; background: rgba(255,255,255,.44); }
-.timeline-wrap { min-height: 0; overflow-x: auto; overflow-y: scroll; overscroll-behavior: contain; scroll-behavior: smooth; background: rgba(255,255,255,.52); scrollbar-width: none; }
+.timeline-scroller { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 20px; background: rgba(255,255,255,.06); }
+.timeline-wrap { min-height: 0; overflow-x: auto; overflow-y: scroll; overscroll-behavior: contain; scroll-behavior: smooth; background: rgba(255,255,255,.18); scrollbar-width: none; }
 .timeline-wrap::-webkit-scrollbar { width: 0; height: 0; }
 .timeline { position: relative; min-width: 540px; height: calc(var(--slot-height) * 96); margin-bottom: 20px; }
 .time-label { position: absolute; left: 0; width: var(--time-width); transform: translateY(-.58em); padding-right: 10px; color: #505568; font-size: .78rem; font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
@@ -313,11 +303,11 @@ body.is-dragging { overscroll-behavior: none; }
   .date-control { flex: 1; }
   .date-control input { width: 100%; }
   .planner-layout { height: auto; display: block; padding: 0; }
-  .schedule-panel { height: 100%; border: 0; border-radius: 0; background: rgba(255,255,255,.73); }
+  .schedule-panel { height: 100%; border: 0; border-radius: 0; background: rgba(255,255,255,.50); }
   .schedule-toolbar { position: relative; padding: 14px 16px 10px; }
   .selection-hint { padding-inline: 16px; }
   .mobile-only { display: inline-flex; align-items: center; justify-content: center; }
-  .palette-panel { display: none; position: fixed; inset: 0; z-index: 70; grid-template-columns: minmax(0, 1fr) 22px; border: 0; border-radius: 0; padding: 0; background: rgba(248,243,255,.88); backdrop-filter: blur(28px) saturate(116%); }
+  .palette-panel { display: none; position: fixed; inset: 0; z-index: 70; grid-template-columns: minmax(0, 1fr) 22px; border: 0; border-radius: 0; padding: 0; background: rgba(248,243,255,.72); backdrop-filter: blur(28px) saturate(106%); }
   .palette-panel.open { display: grid; }
   .palette-content { padding: max(20px, env(safe-area-inset-top)) 12px calc(22px + env(safe-area-inset-bottom)) 18px; }
   .palette-scrollbar { z-index: 72; margin: max(10px, env(safe-area-inset-top)) 3px calc(10px + env(safe-area-inset-bottom)) 1px; }
