@@ -7,7 +7,7 @@ An installable, offline-capable daily planner designed for low-friction adjustme
 - Original color-coded action palette and categories
 - Supplied iridescent image background with translucent, high-readability planner panels
 - Always-visible touch-friendly scroll rails for the actions and daily schedule
-- Custom actions with editable names and colors, saved in the browser
+- Custom actions with editable names and colors, plus bank deletion that preserves scheduled events
 - A full 24-hour schedule in 15-minute increments
 - Today opens at the nearest current hour; upcoming dates open at 6:00 AM
 - Mouse drag/drop and touch drag/drop

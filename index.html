@@ -10,7 +10,7 @@
     <meta name="description" content="A calm, flexible daily planner with 15-minute scheduling.">
     <link rel="manifest" href="./manifest.json">
     <link rel="apple-touch-icon" href="./icons/icon-192.png">
-    <link rel="stylesheet" href="./styles.css?v=4">
+    <link rel="stylesheet" href="./styles.css?v=5">
     <title>Daily Planner</title>
   </head>
   <body>
@@ -93,6 +93,7 @@
         </label>
         <div class="custom-action-preview" id="custom-action-preview" aria-live="polite">Your custom action</div>
         <div class="dialog-actions">
+          <button class="button button-danger delete-custom-action" id="delete-custom-action" type="button" hidden>Delete action</button>
           <button class="button" id="cancel-custom-action" type="button">Cancel</button>
           <button class="button button-primary" type="submit">Save action</button>
         </div>
@@ -104,6 +105,6 @@
       <button id="undo-button" type="button">Undo</button>
     </div>
     <div class="live-region sr-only" id="live-region" aria-live="assertive"></div>
-    <script type="module" src="./js/app.js?v=5"></script>
+    <script type="module" src="./js/app.js?v=8"></script>
   </body>
 </html>

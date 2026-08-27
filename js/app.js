@@ -1,7 +1,7 @@
-import { CATEGORIES, SLOTS_PER_DAY, contrastText } from './config.js';
-import { canPlace, clamp, eventTimeRange, formatSlot, makeEvent, maximumDuration, startingTimelineSlot } from './planner-model.js';
-import { loadDay, saveDay } from './storage.js';
-import { downloadCalendar } from './ics.js';
+import { CATEGORIES, SLOTS_PER_DAY, contrastText, removeCustomCategory } from './config.js?v=2';
+import { canPlace, clamp, eventTimeRange, formatSlot, makeEvent, maximumDuration, startingTimelineSlot } from './planner-model.js?v=2';
+import { loadDay, saveDay } from './storage.js?v=2';
+import { downloadCalendar } from './ics.js?v=2';
 
 const elements = {
   palette: document.querySelector('#palette'),
@@ -25,6 +25,7 @@ const elements = {
   customPreview: document.querySelector('#custom-action-preview'),
   closeCustomAction: document.querySelector('#close-custom-action'),
   cancelCustomAction: document.querySelector('#cancel-custom-action'),
+  deleteCustomAction: document.querySelector('#delete-custom-action'),
   toast: document.querySelector('#toast'),
   toastMessage: document.querySelector('#toast-message'),
   undoButton: document.querySelector('#undo-button'),
@@ -173,6 +174,7 @@ function openCustomActionEditor(category = null) {
   editingCustomId = category?.id || null;
   elements.customName.value = category?.name || '';
   elements.customColor.value = category?.color || '#7c6ce7';
+  elements.deleteCustomAction.hidden = !category;
   document.querySelector('#custom-action-title').textContent = category ? 'Edit custom action' : 'Custom action';
   updateCustomPreview();
   if (typeof elements.customDialog.showModal === 'function') elements.customDialog.showModal();
@@ -182,8 +184,23 @@ function openCustomActionEditor(category = null) {
 
 function closeCustomActionEditor() {
   editingCustomId = null;
+  elements.deleteCustomAction.hidden = true;
   if (typeof elements.customDialog.close === 'function') elements.customDialog.close();
   else elements.customDialog.removeAttribute('open');
+}
+
+function deleteCustomAction() {
+  const category = customCategories.find((item) => item.id === editingCustomId);
+  if (!category) return;
+  const confirmed = window.confirm(`Delete "${category.name}" from Actions? Events already scheduled will stay on your calendar.`);
+  if (!confirmed) return;
+  customCategories = removeCustomCategory(customCategories, category.id);
+  if (selectedCategory?.id === category.id) selectedCategory = null;
+  saveCustomCategories();
+  renderPalette();
+  renderEvents();
+  closeCustomActionEditor();
+  announce(`${category.name} was removed from Actions. Scheduled events were kept.`);
 }
 
 function saveCustomAction(formEvent) {
@@ -648,6 +665,7 @@ elements.customColor.addEventListener('input', updateCustomPreview);
 elements.customForm.addEventListener('submit', saveCustomAction);
 elements.closeCustomAction.addEventListener('click', closeCustomActionEditor);
 elements.cancelCustomAction.addEventListener('click', closeCustomActionEditor);
+elements.deleteCustomAction.addEventListener('click', deleteCustomAction);
 elements.openPalette.addEventListener('click', () => {
   elements.palettePanel.classList.add('open');
   requestAnimationFrame(() => paletteScrollControl?.sync());

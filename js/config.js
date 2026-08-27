@@ -12,6 +12,10 @@ export function contrastText(hexColor) {
   return luminance > 0.42 ? '#252735' : '#ffffff';
 }
 
+export function removeCustomCategory(categories, categoryId) {
+  return categories.filter((category) => category.id !== categoryId);
+}
+
 export const CATEGORIES = [
   { name: 'Journaling', color: '#ff9f43', text: '#ffffff' },
   { name: 'Prayer & Bible', color: '#5b57bd', text: '#ffffff' },

@@ -1,4 +1,4 @@
-import { MAX_DURATION_SLOTS, SLOT_MINUTES, SLOTS_PER_DAY } from './config.js';
+import { MAX_DURATION_SLOTS, SLOT_MINUTES, SLOTS_PER_DAY } from './config.js?v=2';
 
 export function clamp(value, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, value));

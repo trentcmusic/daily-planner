@@ -1,4 +1,4 @@
-import { SLOT_MINUTES } from './config.js';
+import { SLOT_MINUTES } from './config.js?v=2';
 
 const pad = (value) => String(value).padStart(2, '0');
 

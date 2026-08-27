@@ -1,4 +1,4 @@
-import { canPlace, normalizedEvent } from './planner-model.js';
+import { canPlace, normalizedEvent } from './planner-model.js?v=2';
 
 const STORAGE_KEY = 'adhd-daily-planner-v1';
 
