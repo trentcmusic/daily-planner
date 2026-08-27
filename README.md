@@ -6,7 +6,7 @@ An installable, offline-capable daily planner designed for low-friction adjustme
 
 - Original color-coded action palette and categories
 - Supplied iridescent image background with translucent, high-readability planner panels
-- Always-visible touch-friendly scroll rails for the actions and daily schedule
+- A touch-friendly actions rail plus natural finger scrolling in the daily schedule
 - Custom actions with editable names and colors, plus bank deletion that preserves scheduled events
 - A full 24-hour schedule in 15-minute increments
 - Today opens at the nearest current hour; upcoming dates open at 6:00 AM
@@ -17,6 +17,8 @@ An installable, offline-capable daily planner designed for low-friction adjustme
 - Per-date schedules saved in the browser
 - Past dates disabled
 - Delete with a 7-second Undo option
+- A compact Clear calendar control
+- Automatic schedule clearing after export and whenever the app reloads; custom actions remain saved
 - Mobile-friendly calendar handoff with a prefilled Google Calendar link for each scheduled item
 - Native calendar-file sharing when the phone/browser supports it, with `.ics` download as a fallback
 - Keyboard movement, resizing, and deletion

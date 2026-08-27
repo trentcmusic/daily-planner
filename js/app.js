@@ -1,6 +1,6 @@
 import { CATEGORIES, SLOTS_PER_DAY, contrastText, removeCustomCategory } from './config.js?v=2';
 import { canPlace, clamp, eventTimeRange, formatSlot, makeEvent, maximumDuration, startingTimelineSlot } from './planner-model.js?v=2';
-import { loadDay, saveDay } from './storage.js?v=2';
+import { clearAllDays, loadDay, saveDay } from './storage.js?v=3';
 import { createCalendarFile, downloadCalendar, googleCalendarUrl } from './ics.js?v=3';
 
 const elements = {
@@ -13,11 +13,11 @@ const elements = {
   friendlyDate: document.querySelector('#friendly-date'),
   selectionHint: document.querySelector('#selection-hint'),
   deleteButton: document.querySelector('#trash-button'),
+  clearCalendarButton: document.querySelector('#clear-calendar-button'),
   exportButton: document.querySelector('#export-button'),
   openPalette: document.querySelector('#open-palette'),
   closePalette: document.querySelector('#close-palette'),
   paletteScrollbar: document.querySelector('#palette-scrollbar'),
-  timelineScrollbar: document.querySelector('#timeline-scrollbar'),
   customDialog: document.querySelector('#custom-action-dialog'),
   customForm: document.querySelector('#custom-action-form'),
   customName: document.querySelector('#custom-action-name'),
@@ -52,7 +52,8 @@ let nativeDragPayload = null;
 let customCategories = [];
 let editingCustomId = null;
 let paletteScrollControl = null;
-let timelineScrollControl = null;
+let calendarExportDate = null;
+let calendarExportEvents = [];
 
 const CUSTOM_ACTIONS_KEY = 'adhd-daily-planner-custom-actions-v1';
 
@@ -66,7 +67,6 @@ function timelineStartSlot(date, now = new Date()) {
 
 function scrollTimelineToStart(date) {
   elements.timelineWrap.scrollTop = timelineStartSlot(date) * slotHeight();
-  timelineScrollControl?.sync();
 }
 
 function announce(message) {
@@ -330,7 +330,6 @@ function renderTimeline() {
     }
   }
   elements.timeline.replaceChildren(fragment);
-  requestAnimationFrame(() => timelineScrollControl?.sync());
 }
 
 function renderEvents() {
@@ -401,6 +400,7 @@ function selectEvent(eventId) {
 function updateSelectionUi() {
   const selected = eventById(selectedEventId);
   elements.deleteButton.disabled = !selected;
+  elements.clearCalendarButton.disabled = events.length === 0;
   elements.selectionHint.textContent = selected
     ? `${selected.title} • ${eventTimeRange(selected)} — drag to move or pull the white bar to resize`
     : selectedCategory
@@ -623,14 +623,40 @@ function changeDate() {
   scrollTimelineToStart(selectedDate);
 }
 
+function emptyCurrentCalendar(message) {
+  events = [];
+  selectedCategory = null;
+  selectedEventId = null;
+  undoRecord = null;
+  clearTimeout(undoTimer);
+  elements.toast.hidden = true;
+  saveAndRender(message);
+  renderPalette();
+}
+
+function clearCalendarManually() {
+  if (!events.length) {
+    announce('The calendar is already clear.');
+    return;
+  }
+  if (!window.confirm('Clear every item from this calendar?')) return;
+  emptyCurrentCalendar('Calendar cleared.');
+}
+
+function clearCalendarAfterExport() {
+  if (events.length) emptyCurrentCalendar('Calendar cleared after export.');
+}
+
 function closeCalendarDialog() {
   if (typeof elements.calendarDialog.close === 'function') elements.calendarDialog.close();
   else elements.calendarDialog.removeAttribute('open');
+  calendarExportDate = null;
+  calendarExportEvents = [];
 }
 
 function calendarShareFile() {
   try {
-    return createCalendarFile(selectedDate, events);
+    return createCalendarFile(calendarExportDate || selectedDate, calendarExportEvents);
   } catch {
     return null;
   }
@@ -648,7 +674,7 @@ function canShareCalendarFile(file = calendarShareFile()) {
 function renderGoogleCalendarLinks() {
   const fragment = document.createDocumentFragment();
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  for (const event of [...events].sort((a, b) => a.start - b.start)) {
+  for (const event of [...calendarExportEvents].sort((a, b) => a.start - b.start)) {
     const item = document.createElement('li');
     item.className = 'google-event-item';
 
@@ -662,7 +688,7 @@ function renderGoogleCalendarLinks() {
 
     const link = document.createElement('a');
     link.className = 'button google-event-link';
-    link.href = googleCalendarUrl(selectedDate, event, timeZone);
+    link.href = googleCalendarUrl(calendarExportDate, event, timeZone);
     link.target = '_blank';
     link.rel = 'noopener';
     link.textContent = 'Add';
@@ -670,7 +696,8 @@ function renderGoogleCalendarLinks() {
     link.addEventListener('click', () => {
       item.classList.add('opened');
       link.textContent = 'Open again';
-      announce(`${event.title} opened in Google Calendar. Save it there, then return for the next item.`);
+      clearCalendarAfterExport();
+      announce(`${event.title} opened in Google Calendar. Your planner is clear; save the item there, then return for the next one.`);
     });
 
     item.append(eventCopy, link);
@@ -685,6 +712,8 @@ function openCalendarDialog() {
     elements.selectionHint.textContent = 'Add at least one event before adding to a calendar.';
     return;
   }
+  calendarExportDate = selectedDate;
+  calendarExportEvents = events.map((event) => ({ ...event }));
   renderGoogleCalendarLinks();
   const canShare = canShareCalendarFile();
   elements.shareCalendarButton.hidden = !canShare;
@@ -705,17 +734,20 @@ async function shareCalendarFile() {
     await navigator.share({
       files: [file],
       title: 'Daily Planner schedule',
-      text: `My Daily Planner schedule for ${selectedDate}`,
+      text: `My Daily Planner schedule for ${calendarExportDate}`,
     });
-    announce('Calendar file shared.');
+    clearCalendarAfterExport();
+    announce('Calendar file shared and the planner was cleared.');
   } catch (error) {
     if (error?.name !== 'AbortError') announce('The calendar file could not be shared. Use Download instead.');
   }
 }
 
 function downloadCalendarFile() {
-  downloadCalendar(selectedDate, events);
-  announce(`${events.length} event${events.length === 1 ? '' : 's'} downloaded.`);
+  const exportedCount = calendarExportEvents.length;
+  downloadCalendar(calendarExportDate, calendarExportEvents);
+  clearCalendarAfterExport();
+  announce(`${exportedCount} event${exportedCount === 1 ? '' : 's'} downloaded and the planner was cleared.`);
 }
 
 elements.timeline.addEventListener('click', (clickEvent) => {
@@ -737,6 +769,7 @@ elements.timeline.addEventListener('drop', (event) => {
   clearDropTarget();
 });
 elements.deleteButton.addEventListener('click', () => { if (selectedEventId) deleteEvent(selectedEventId); });
+elements.clearCalendarButton.addEventListener('click', clearCalendarManually);
 elements.deleteButton.addEventListener('dragover', (event) => {
   if (nativeDragPayload?.type !== 'event') return;
   event.preventDefault();
@@ -782,10 +815,10 @@ function initialize() {
   elements.date.min = today;
   elements.date.value = today;
   selectedDate = today;
-  events = loadDay(selectedDate);
+  clearAllDays();
+  events = [];
   customCategories = loadCustomCategories();
   paletteScrollControl = wireVisibleScrollbar(elements.paletteContent, elements.paletteScrollbar);
-  timelineScrollControl = wireVisibleScrollbar(elements.timelineWrap, elements.timelineScrollbar);
   renderPalette();
   renderTimeline();
   renderEvents();

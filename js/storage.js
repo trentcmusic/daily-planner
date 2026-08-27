@@ -38,3 +38,7 @@ export function saveDay(date, events) {
   store.days[date] = events;
   return writeStore(store);
 }
+
+export function clearAllDays() {
+  return writeStore({ version: 1, days: {} });
+}

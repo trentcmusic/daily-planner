@@ -10,7 +10,7 @@
     <meta name="description" content="A calm, flexible daily planner with 15-minute scheduling.">
     <link rel="manifest" href="./manifest.json">
     <link rel="apple-touch-icon" href="./icons/icon-192.png">
-    <link rel="stylesheet" href="./styles.css?v=6">
+    <link rel="stylesheet" href="./styles.css?v=7">
     <title>Daily Planner</title>
   </head>
   <body>
@@ -57,6 +57,7 @@
             </div>
             <div class="schedule-actions">
               <button class="button mobile-only" id="open-palette" type="button">＋ Add action</button>
+              <button class="button button-small" id="clear-calendar-button" type="button" disabled>Clear calendar</button>
               <button class="button button-danger" id="trash-button" type="button" aria-label="Delete selected event" disabled>Delete</button>
             </div>
           </div>
@@ -64,9 +65,6 @@
           <div class="timeline-scroller">
             <div class="timeline-wrap" id="timeline-wrap">
               <div class="timeline" id="timeline" role="grid" aria-label="24-hour schedule in 15-minute increments"></div>
-            </div>
-            <div class="visible-scrollbar timeline-scrollbar" id="timeline-scrollbar" role="scrollbar" aria-label="Scroll the daily schedule" aria-controls="timeline-wrap" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
-              <div class="visible-scrollbar-thumb"></div>
             </div>
           </div>
         </section>
@@ -118,7 +116,7 @@
               <h3 id="google-calendar-title">Google Calendar</h3>
             </div>
           </div>
-          <p class="helper">Tap <strong>Add</strong> for each item. Google Calendar opens with everything filled in—save it, then return here for the next one.</p>
+          <p class="helper">Tap <strong>Add</strong> for each item. Google Calendar opens with everything filled in—save it, then return here for the next one. Your planner clears after the first Add, but this list stays open so you can finish.</p>
           <ol class="google-event-list" id="google-event-list"></ol>
         </section>
 
@@ -146,6 +144,6 @@
       <button id="undo-button" type="button">Undo</button>
     </div>
     <div class="live-region sr-only" id="live-region" aria-live="assertive"></div>
-    <script type="module" src="./js/app.js?v=9"></script>
+    <script type="module" src="./js/app.js?v=10"></script>
   </body>
 </html>
