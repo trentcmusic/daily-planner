@@ -1,7 +1,8 @@
 import { CATEGORIES, DAY_MINUTES, DEFAULT_DURATION_MINUTES, MOVE_INCREMENT_MINUTES, RESIZE_INCREMENT_MINUTES, SLOT_MINUTES, SLOTS_PER_DAY, contrastText, removeCustomCategory } from './config.js?v=3';
 import { canPlace, clamp, eventTimeRange, formatMinutes, formatSlot, makeEvent, maximumDuration, snappedMoveStart, startingTimelineSlot } from './planner-model.js?v=3';
-import { loadCustomActions, loadDay, saveCustomActions, saveDay } from './storage.js?v=5';
+import { loadCustomActions, loadDay, saveCustomActions, saveDay } from './storage.js?v=6';
 import { createCalendarFile, downloadCalendar, googleCalendarUrl } from './ics.js?v=5';
+import { plannerSync } from './sync.js?v=1';
 
 const PROFILES = {
   trent: { id: 'trent', name: 'Trent' },
@@ -55,6 +56,28 @@ const elements = {
   toastMessage: document.querySelector('#toast-message'),
   undoButton: document.querySelector('#undo-button'),
   live: document.querySelector('#live-region'),
+  syncButton: document.querySelector('#sync-button'),
+  syncButtonLabel: document.querySelector('#sync-button-label'),
+  syncDialog: document.querySelector('#sync-dialog'),
+  closeSyncDialog: document.querySelector('#close-sync-dialog'),
+  syncStatusCard: document.querySelector('#sync-status-card'),
+  syncStatusMessage: document.querySelector('#sync-status-message'),
+  syncNotConfigured: document.querySelector('#sync-not-configured'),
+  syncSignedOut: document.querySelector('#sync-signed-out'),
+  syncNeedsWorkspace: document.querySelector('#sync-needs-workspace'),
+  syncConnected: document.querySelector('#sync-connected'),
+  syncEmailForm: document.querySelector('#sync-email-form'),
+  syncEmail: document.querySelector('#sync-email'),
+  createWorkspace: document.querySelector('#create-workspace'),
+  joinWorkspaceForm: document.querySelector('#join-workspace-form'),
+  workspaceCode: document.querySelector('#workspace-code'),
+  syncAccountEmail: document.querySelector('#sync-account-email'),
+  syncWorkspaceName: document.querySelector('#sync-workspace-name'),
+  syncInviteCode: document.querySelector('#sync-invite-code'),
+  copyInviteCode: document.querySelector('#copy-invite-code'),
+  syncNow: document.querySelector('#sync-now'),
+  syncSignOut: document.querySelector('#sync-sign-out'),
+  syncError: document.querySelector('#sync-error'),
 };
 
 let selectedDate = localDateString(new Date());
@@ -75,6 +98,7 @@ let calendarExportEvents = [];
 let activeProfile = PROFILES[requestedProfile] || null;
 let eventActionId = null;
 let reminderInterval = null;
+let lastSyncState = null;
 
 const REMINDER_SETTING_KEY = 'adhd-daily-planner-reminders-enabled-v1';
 const SENT_REMINDERS_KEY = 'adhd-daily-planner-reminders-sent-v1';
@@ -96,6 +120,57 @@ function scrollTimelineToStart(date) {
 function announce(message) {
   elements.live.textContent = '';
   requestAnimationFrame(() => { elements.live.textContent = message; });
+}
+
+function refreshVisiblePlannerFromStorage() {
+  if (!activeProfile) return;
+  events = loadDay(activeProfile.id, selectedDate);
+  customCategories = loadCustomCategories();
+  selectedEventId = null;
+  selectedCategory = null;
+  renderPalette();
+  renderEvents();
+  syncReminderLoop();
+}
+
+function renderSyncState(state) {
+  lastSyncState = state;
+  const connected = ['syncing', 'synced', 'offline'].includes(state.phase) && Boolean(state.workspaceName);
+  elements.syncButton.dataset.syncState = state.phase;
+  elements.syncButtonLabel.textContent = state.phase === 'synced' ? 'Synced' : state.pending ? `Sync ${state.pending}` : 'Sync';
+  elements.syncStatusCard.dataset.syncState = state.phase;
+  elements.syncStatusMessage.textContent = state.message;
+  elements.syncNotConfigured.hidden = state.phase !== 'not-configured';
+  elements.syncSignedOut.hidden = !['signed-out', 'email-sent'].includes(state.phase);
+  elements.syncNeedsWorkspace.hidden = state.phase !== 'needs-workspace';
+  elements.syncConnected.hidden = !connected;
+  if (connected) {
+    elements.syncAccountEmail.textContent = state.email;
+    elements.syncWorkspaceName.textContent = state.workspaceName;
+    elements.syncInviteCode.textContent = state.inviteCode;
+  }
+  if (state.dataChanged) refreshVisiblePlannerFromStorage();
+}
+
+function showSyncDialog() {
+  elements.syncError.textContent = '';
+  if (typeof elements.syncDialog.showModal === 'function') {
+    if (!elements.syncDialog.open) elements.syncDialog.showModal();
+  } else elements.syncDialog.setAttribute('open', '');
+}
+
+function closeSyncDialog() {
+  if (typeof elements.syncDialog.close === 'function') elements.syncDialog.close();
+  else elements.syncDialog.removeAttribute('open');
+}
+
+async function runSyncAction(action) {
+  elements.syncError.textContent = '';
+  try {
+    await action();
+  } catch (error) {
+    elements.syncError.textContent = error?.message || 'Cloud sync could not complete that request.';
+  }
 }
 
 function slotHeight() {
@@ -1064,6 +1139,25 @@ elements.openPalette.addEventListener('click', () => {
   elements.palettePanel.classList.add('open');
 });
 elements.closePalette.addEventListener('click', () => elements.palettePanel.classList.remove('open'));
+elements.syncButton.addEventListener('click', showSyncDialog);
+elements.closeSyncDialog.addEventListener('click', closeSyncDialog);
+elements.syncDialog.addEventListener('cancel', (event) => { event.preventDefault(); closeSyncDialog(); });
+elements.syncEmailForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  runSyncAction(() => plannerSync.sendMagicLink(elements.syncEmail.value));
+});
+elements.createWorkspace.addEventListener('click', () => runSyncAction(() => plannerSync.createWorkspace()));
+elements.joinWorkspaceForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  runSyncAction(() => plannerSync.joinWorkspace(elements.workspaceCode.value));
+});
+elements.copyInviteCode.addEventListener('click', () => runSyncAction(async () => {
+  await navigator.clipboard.writeText(lastSyncState?.inviteCode || '');
+  elements.copyInviteCode.textContent = 'Copied';
+  setTimeout(() => { elements.copyInviteCode.textContent = 'Copy code'; }, 1600);
+}));
+elements.syncNow.addEventListener('click', () => runSyncAction(() => plannerSync.syncNow()));
+elements.syncSignOut.addEventListener('click', () => runSyncAction(() => plannerSync.signOut()));
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) checkDueReminders();
 });
@@ -1097,6 +1191,8 @@ function initialize() {
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('./service-worker.js').then(syncReminderLoop).catch(updateReminderUi);
   } else updateReminderUi();
+  plannerSync.subscribe(renderSyncState);
+  plannerSync.initialize();
 }
 
 initialize();
